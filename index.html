@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>The Pact</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A0D1B;
+    --bg-2:#141A33;
+    --surface:#141830;
+    --surface-2:#1B2144;
+    --ink:#E7E8F5;
+    --ink-dim:#8189AC;
+    --gold:#E8C468;
+    --gold-dim:#B89A4E;
+    --gold-soft:rgba(232,196,104,.14);
+    --rust:#E0796B;
+    --rust-dim:#A85950;
+    --rust-soft:rgba(224,121,107,.14);
+    --ice:#7DD3E0;
+    --ice-soft:rgba(125,211,224,.14);
+    --rule:#272C4C;
+    --radius:16px;
+    --ease:cubic-bezier(.4,0,.2,1);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',sans-serif;}
+  body{
+    min-height:100vh;padding-bottom:40px; position:relative; overflow-x:hidden;
+    background:radial-gradient(1200px 700px at 25% -10%, var(--bg-2), var(--bg) 60%);
+  }
+  #stars{position:fixed; inset:0; overflow:hidden; z-index:0; pointer-events:none;}
+  .star{position:absolute; border-radius:50%; background:#fff; animation:twinkle ease-in-out infinite;}
+  .star.bright{box-shadow:0 0 6px 1px rgba(232,196,104,.6);}
+  @keyframes twinkle{ 0%,100%{opacity:.15;} 50%{opacity:1;} }
+  h1,h2,h3{font-family:'Fraunces',serif; margin:0; font-weight:600; letter-spacing:.2px;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  .dim{color:var(--ink-dim);}
+  .wrap{max-width:520px;margin:0 auto;padding:20px 18px 0; position:relative; z-index:1;}
+  button{font-family:inherit;cursor:pointer; transition:transform .15s var(--ease), background-color .2s var(--ease), border-color .2s var(--ease), opacity .2s var(--ease);}
+  button:active{transform:scale(.97);}
+  .btn{
+    background:var(--gold); color:#141830; border:none; border-radius:12px;
+    padding:14px 18px; font-weight:600; font-size:15px; width:100%;
+    box-shadow:0 6px 18px -8px rgba(232,196,104,.4);
+  }
+  .btn:hover{background:#F0D488;}
+  .btn:disabled{opacity:.4; cursor:default; box-shadow:none;}
+  .btn-ghost{
+    background:transparent; border:1px solid var(--rule); color:var(--ink);
+    border-radius:12px; padding:12px 16px; font-size:14px; width:100%;
+  }
+  .btn-ghost:hover{border-color:var(--gold-dim); color:var(--gold);}
+  .btn-freeze{
+    background:var(--ice-soft); border:1px solid var(--ice); color:var(--ice);
+    border-radius:12px; padding:14px; font-weight:600; font-size:14px; width:100%;
+  }
+  input,select{
+    width:100%; background:var(--surface-2); border:1px solid var(--rule); color:var(--ink);
+    border-radius:12px; padding:12px 14px; font-size:15px; font-family:inherit; margin-top:6px;
+    transition:border-color .2s var(--ease), box-shadow .2s var(--ease);
+  }
+  input:focus,select:focus{outline:none; border-color:var(--gold-dim); box-shadow:0 0 0 3px var(--gold-soft);}
+  label{font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-dim); display:block; margin-top:16px;}
+  .field:first-child label{margin-top:0;}
+  .hidden{display:none !important;}
+  @keyframes riseIn{ from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);} }
+  @keyframes popIn{ from{opacity:0; transform:scale(.7);} to{opacity:1; transform:scale(1);} }
+  @keyframes fadeIn{ from{opacity:0;} to{opacity:1;} }
+  @media (prefers-reduced-motion: reduce){
+    *{animation:none !important; transition:none !important;}
+  }
+
+  /* --- onboarding --- */
+  #onboard .hero{padding:34px 0 20px; text-align:center; animation:riseIn .5s var(--ease) both;}
+  #onboard .hero .mark{
+    width:56px;height:56px;border-radius:50%;margin:0 auto 14px;
+    border:2px solid var(--gold); display:flex;align-items:center;justify-content:center;
+    font-family:'Fraunces',serif; font-size:22px; color:var(--gold); font-weight:600;
+    background:var(--surface); box-shadow:0 8px 20px -8px rgba(232,196,104,.35);
+  }
+  #onboard h1{font-size:28px;}
+  #onboard p.tag{color:var(--ink-dim); font-size:14px; margin-top:8px; line-height:1.5;}
+  .tabs{display:flex; gap:8px; margin:22px 0 4px; animation:riseIn .5s .05s var(--ease) both;}
+  .tab{flex:1; text-align:center; padding:10px; border-radius:10px; border:1px solid var(--rule); color:var(--ink-dim); font-size:14px; transition:all .25s var(--ease); cursor:pointer;}
+  .tab.active{border-color:var(--gold); color:var(--gold); background:var(--gold-soft);}
+  .card{
+    background:var(--surface); border:1px solid var(--rule); border-radius:var(--radius); padding:18px; margin-top:16px;
+    box-shadow:0 10px 30px -18px rgba(0,0,0,.5); animation:riseIn .5s .1s var(--ease) both;
+  }
+  .modeopt{border:1px solid var(--rule); border-radius:12px; padding:12px 14px; margin-top:8px; transition:border-color .2s var(--ease), background-color .2s var(--ease);}
+  .modeopt:has(input:checked){border-color:var(--gold-dim); background:var(--gold-soft);}
+  .modeopt input{width:auto; margin:0 10px 0 0; accent-color:var(--gold);}
+  .modeopt-row{display:flex; align-items:center;}
+  .modeopt .desc{font-size:12px; color:var(--ink-dim); margin-top:4px; padding-left:24px;}
+
+  /* --- main app --- */
+  #app header{padding:22px 0 4px; display:flex; justify-content:space-between; align-items:flex-start;}
+  #app header .code{font-size:11px; color:var(--ink-dim); letter-spacing:.1em;}
+  .badge{display:inline-block; font-size:11px; padding:4px 9px; border-radius:20px; border:1px solid var(--rule); color:var(--ink-dim); margin-top:6px;}
+
+  .quote{
+    margin-top:14px; padding:16px; border-left:2px solid var(--gold); background:var(--surface);
+    border-radius:0 12px 12px 0; font-style:italic; font-size:14.5px; line-height:1.5;
+    box-shadow:0 10px 30px -20px rgba(0,0,0,.6); animation:riseIn .5s .05s var(--ease) both;
+  }
+  .quote span{display:block; margin-top:6px; font-style:normal; font-size:11px; color:var(--ink-dim); text-transform:uppercase; letter-spacing:.06em;}
+
+  .today-card{margin-top:18px; text-align:center;}
+  .today-card .daynum{font-family:'Fraunces',serif; font-size:15px; color:var(--ink-dim); margin-bottom:10px;}
+  .today-actions{display:flex; gap:10px; margin-top:14px;}
+  .btn-fail{background:transparent; border:1px solid var(--rust); color:var(--rust); border-radius:12px; padding:14px; font-weight:600; flex:1;}
+  .btn-fail:hover{background:var(--rust-soft);}
+  .btn-pass{flex:1;}
+  .freeze-row{margin-top:10px;}
+  .freeze-note{font-size:12px; color:var(--ice); margin-top:10px;}
+  .checked-in{padding:18px 0 4px; animation:riseIn .35s var(--ease) both;}
+  .stamp{
+    width:64px;height:64px;border-radius:50%;margin:0 auto 8px; display:flex;align-items:center;justify-content:center;
+    font-size:26px; border:2px solid; font-family:'Fraunces',serif; animation:popIn .4s var(--ease) both;
+  }
+  .stamp.pass{border-color:var(--gold); color:var(--gold); background:var(--gold-soft);}
+  .stamp.fail{border-color:var(--rust); color:var(--rust); background:var(--rust-soft);}
+  .stamp.freeze{border-color:var(--ice); color:var(--ice); background:var(--ice-soft);}
+
+  .section-title{font-size:12px; text-transform:uppercase; letter-spacing:.1em; color:var(--ink-dim); margin:26px 0 10px;}
+
+  /* calendar */
+  .cal-row{margin-bottom:14px; animation:riseIn .4s var(--ease) both;}
+  .cal-name{font-size:13px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;}
+  .freeze-chip{
+    font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--ice); border:1px solid var(--ice);
+    background:var(--ice-soft); border-radius:20px; padding:2px 8px; transition:transform .2s var(--ease);
+  }
+  .freeze-chip.pulse{animation:popIn .5s var(--ease);}
+  .cal-grid{display:grid; grid-template-columns:repeat(7, 1fr); gap:5px;}
+  .cal-cell{
+    aspect-ratio:1; border-radius:7px; border:1px solid var(--rule); display:flex;align-items:center;justify-content:center;
+    font-size:10px; font-family:'IBM Plex Mono',monospace; color:var(--ink-dim);
+    transition:transform .2s var(--ease), background-color .3s var(--ease), border-color .3s var(--ease);
+    animation:fadeIn .4s var(--ease) both;
+  }
+  .cal-cell:hover{transform:translateY(-2px);}
+  .cal-cell.pass{background:var(--gold-soft); border-color:var(--gold-dim); color:var(--gold);}
+  .cal-cell.fail{background:var(--rust-soft); border-color:var(--rust-dim); color:var(--rust);}
+  .cal-cell.freeze{background:var(--ice-soft); border-color:var(--ice); color:var(--ice);}
+  .cal-cell.today{outline:1.5px dashed var(--ink-dim); outline-offset:1px;}
+  .cal-cell.future{opacity:.35;}
+
+  /* ledger */
+  .ledger-line{
+    display:flex; align-items:baseline; gap:6px; padding:12px 0; border-bottom:1px dashed var(--rule); font-size:14px;
+    animation:fadeIn .4s var(--ease) both;
+  }
+  .ledger-line .fill{flex:1; border-bottom:1px dotted var(--rule); margin-bottom:4px;}
+  .ledger-line .amt{font-family:'IBM Plex Mono',monospace; font-weight:600; color:var(--gold);}
+  .ledger-empty{color:var(--ink-dim); font-size:13.5px; padding:10px 0;}
+  .sync-note{text-align:center; font-size:11px; color:var(--ink-dim); margin-top:22px;}
+  .cfg-note{font-size:12px; color:var(--ink-dim); margin-top:14px; line-height:1.5;}
+  .cfg-note code{background:var(--surface-2); padding:1px 5px; border-radius:4px;}
+</style>
+</head>
+<body>
+<div id="stars"></div>
+<div class="wrap">
+
+  <!-- ============ ONBOARDING ============ -->
+  <div id="onboard">
+    <div class="hero">
+      <div class="mark">P</div>
+      <h1>The Pact</h1>
+      <p class="tag">A streak, held with someone else.<br>What you build gets banked. What you break, you pay for.</p>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active" data-tab="create">Start a pact</div>
+      <div class="tab" data-tab="join">Join a pact</div>
+    </div>
+
+    <div class="card" id="pane-create">
+      <div class="field">
+        <label>Your name</label>
+        <input id="c-name" placeholder="e.g. Kai">
+      </div>
+      <div class="field">
+        <label>Pact name</label>
+        <input id="c-title" placeholder="e.g. Kai &amp; Sam">
+      </div>
+      <div class="field">
+        <label>Category</label>
+        <select id="c-category">
+          <option value="porn">No See</option>
+          <option value="fap">No Do</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Format</label>
+        <div class="modeopt">
+          <div class="modeopt-row"><input type="radio" name="mode" value="streak" checked> Tiered streak</div>
+          <div class="desc">One long streak each. Whoever breaks first owes the other their full streak's value when they eventually break too. £1/day (yr 1) → 50p/day (yr 2) → 25p/day (yr 3+, capped).</div>
+        </div>
+        <div class="modeopt">
+          <div class="modeopt-row"><input type="radio" name="mode" value="cycle"> 6-day cycle</div>
+          <div class="desc">1 off day + 5 clean days, on repeat. Whoever completes a cycle the other fails gets a flat payout.</div>
+        </div>
+      </div>
+      <div class="field hidden" id="cycle-rate-field">
+        <label>Payout per completed cycle</label>
+        <input id="c-cyclerate" type="number" value="5" step="0.5">
+      </div>
+      <div class="field">
+        <label>Start date</label>
+        <input id="c-start" type="date">
+      </div>
+      <button class="btn" style="margin-top:22px" onclick="createPact()">Create pact</button>
+    </div>
+
+    <div class="card hidden" id="pane-join">
+      <div class="field">
+        <label>Your name</label>
+        <input id="j-name" placeholder="e.g. Sam">
+      </div>
+      <div class="field">
+        <label>Pact code</label>
+        <input id="j-code" placeholder="e.g. 7F3K2Q" style="text-transform:uppercase">
+      </div>
+      <button class="btn" style="margin-top:22px" onclick="joinPact()">Join pact</button>
+    </div>
+
+  </div>
+
+  <!-- ============ MAIN APP ============ -->
+  <div id="app" class="hidden">
+    <header>
+      <div>
+        <h2 id="app-title">—</h2>
+        <span class="badge" id="app-badge">—</span>
+      </div>
+      <div style="text-align:right">
+        <div class="code mono">CODE <span id="app-code">—</span></div>
+        <button class="btn-ghost" style="width:auto; padding:6px 10px; margin-top:8px; font-size:11px;" onclick="leavePact()">Switch</button>
+      </div>
+    </header>
+
+    <div class="quote" id="quote-box">—</div>
+
+    <div class="card today-card" id="today-card">
+      <div class="daynum" id="today-label">—</div>
+      <div id="today-input">
+        <div class="today-actions">
+          <button class="btn btn-pass" onclick="checkIn('pass')">Stayed clean</button>
+          <button class="btn-fail" onclick="checkIn('fail')">I broke it</button>
+        </div>
+        <div class="freeze-row hidden" id="freeze-row">
+          <button class="btn-freeze" onclick="useFreeze()">❄ Use a freeze instead</button>
+          <div class="freeze-note" id="freeze-note"></div>
+        </div>
+      </div>
+      <div id="today-done" class="checked-in hidden">
+        <div class="stamp" id="today-stamp"></div>
+        <div class="dim" style="font-size:13px" id="today-done-text">—</div>
+      </div>
+    </div>
+
+    <div class="section-title">Calendar</div>
+    <div id="calendars"></div>
+
+    <div class="section-title">Ledger</div>
+    <div class="card" id="ledger-box"></div>
+
+    <p class="sync-note">Refreshes automatically · last synced <span id="sync-time">just now</span></p>
+  </div>
+</div>
+
+<script>
+/* ---------------------------------------------------------
+   FIREBASE — set this to your own Realtime Database URL
+   e.g. "https://your-project-id-default-rtdb.firebaseio.com"
+   Leave blank to run purely on localStorage (single device).
+--------------------------------------------------------- */
+const FIREBASE_URL = "https://the-pact-ad8e8-default-rtdb.europe-west1.firebasedatabase.app";
+
+const LOCAL_KEY = "pact_local_store_v1";
+const SESSION_KEY = "pact_session_v1";
+
+const QUOTES = [
+  ["The urge is temporary. The regret has a longer memory.", "Reminder"],
+  ["You don't have to win the whole war today. Just don't lose today.", "Reminder"],
+  ["Boredom and loneliness are the two biggest triggers — name the feeling before you name the tab.", "Rebooting basics"],
+  ["A flatline isn't failure, it's your brain recalibrating. Keep the streak.", "Rebooting basics"],
+  ["Nobody's watching this cell turn green but somebody is counting on it.", "Accountability"],
+  ["Delay by ten minutes. Most urges don't survive ten minutes.", "Reminder"],
+  ["The version of you tomorrow is built entirely from what you do today.", "Reminder"],
+  ["It's not about being perfect. It's about what you do the day after you slip.", "Rebooting basics"],
+  ["Every clean day compounds — for your head, and for the pot.", "Accountability"],
+  ["If the urge is loud, get up and change rooms. Momentum breaks momentum.", "Reminder"]
+];
+
+let SESSION = JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
+let syncTimer = null;
+
+/* ---------- starfield ---------- */
+function paintStars(){
+  const box = document.getElementById("stars");
+  const count = 90;
+  let html = "";
+  for(let i=0; i<count; i++){
+    const size = Math.random() < .12 ? (2 + Math.random()*1.5) : (0.8 + Math.random()*1.2);
+    const top = Math.random()*100;
+    const left = Math.random()*100;
+    const dur = 2.5 + Math.random()*3.5;
+    const delay = Math.random()*5;
+    const bright = size > 2 ? " bright" : "";
+    html += `<span class="star${bright}" style="width:${size}px;height:${size}px;top:${top}%;left:${left}%;animation-duration:${dur}s;animation-delay:${delay}s;"></span>`;
+  }
+  box.innerHTML = html;
+}
+paintStars();
+
+/* ---------- tiny "db" abstraction: firebase REST if configured, else localStorage ---------- */
+async function dbGet(code){
+  if(FIREBASE_URL){
+    const res = await fetch(`${FIREBASE_URL}/pacts/${code}.json`);
+    return await res.json();
+  }
+  const all = JSON.parse(localStorage.getItem(LOCAL_KEY) || "{}");
+  return all[code] || null;
+}
+async function dbSet(code, data){
+  if(FIREBASE_URL){
+    await fetch(`${FIREBASE_URL}/pacts/${code}.json`, {
+      method: "PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify(data)
+    });
+    return;
+  }
+  const all = JSON.parse(localStorage.getItem(LOCAL_KEY) || "{}");
+  all[code] = data;
+  localStorage.setItem(LOCAL_KEY, JSON.stringify(all));
+}
+
+function genCode(){
+  return Math.random().toString(36).slice(2,8).toUpperCase();
+}
+function todayStr(d){
+  d = d || new Date();
+  return d.toISOString().slice(0,10);
+}
+function daysBetween(a,b){
+  return Math.round((new Date(b) - new Date(a)) / 86400000);
+}
+
+/* ---------- onboarding ---------- */
+document.querySelectorAll(".tab").forEach(t=>{
+  t.addEventListener("click", ()=>{
+    document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+    t.classList.add("active");
+    document.getElementById("pane-create").classList.toggle("hidden", t.dataset.tab!=="create");
+    document.getElementById("pane-join").classList.toggle("hidden", t.dataset.tab!=="join");
+  });
+});
+document.querySelectorAll('input[name="mode"]').forEach(r=>{
+  r.addEventListener("change", ()=>{
+    document.getElementById("cycle-rate-field").classList.toggle("hidden", r.value !== "cycle" || !r.checked);
+  });
+});
+document.getElementById("c-start").value = todayStr();
+
+async function createPact(){
+  const name = document.getElementById("c-name").value.trim();
+  const title = document.getElementById("c-title").value.trim() || "The Pact";
+  if(!name){ alert("Enter your name first."); return; }
+  const mode = document.querySelector('input[name="mode"]:checked').value;
+  const code = genCode();
+  const data = {
+    title, code,
+    category: document.getElementById("c-category").value,
+    mode,
+    cycleRate: parseFloat(document.getElementById("c-cyclerate").value) || 5,
+    startDate: document.getElementById("c-start").value || todayStr(),
+    participants: { [name]: { joinedAt: Date.now() } },
+    logs: { [name]: {} },
+    freezes: { [name]: 0 },
+    freezeCredited: { [name]: 0 }
+  };
+  await dbSet(code, data);
+  SESSION = { code, name };
+  localStorage.setItem(SESSION_KEY, JSON.stringify(SESSION));
+  boot();
+}
+
+async function joinPact(){
+  const name = document.getElementById("j-name").value.trim();
+  const code = document.getElementById("j-code").value.trim().toUpperCase();
+  if(!name || !code){ alert("Enter your name and the pact code."); return; }
+  const data = await dbGet(code);
+  if(!data){ alert("No pact found with that code."); return; }
+  data.participants = data.participants || {};
+  data.logs = data.logs || {};
+  data.freezes = data.freezes || {};
+  data.freezeCredited = data.freezeCredited || {};
+  if(!data.participants[name]) data.participants[name] = { joinedAt: Date.now() };
+  if(!data.logs[name]) data.logs[name] = {};
+  if(data.freezes[name] === undefined) data.freezes[name] = 0;
+  if(data.freezeCredited[name] === undefined) data.freezeCredited[name] = 0;
+  await dbSet(code, data);
+  SESSION = { code, name };
+  localStorage.setItem(SESSION_KEY, JSON.stringify(SESSION));
+  boot();
+}
+
+function leavePact(){
+  localStorage.removeItem(SESSION_KEY);
+  SESSION = null;
+  if(syncTimer) clearInterval(syncTimer);
+  document.getElementById("app").classList.add("hidden");
+  document.getElementById("onboard").classList.remove("hidden");
+}
+
+/* ---------- reward math ---------- */
+/* ---------- freezes ---------- */
+// awards 1 freeze for every complete 30-day clean run (pass or freeze), accumulating if unused
+function creditFreezes(data, name){
+  data.freezes = data.freezes || {};
+  data.freezeCredited = data.freezeCredited || {};
+  const streak = currentStreak(data, name);
+  const monthsEarned = Math.floor(streak / 30);
+  const alreadyCredited = data.freezeCredited[name] || 0;
+  if(monthsEarned > alreadyCredited){
+    data.freezes[name] = (data.freezes[name] || 0) + (monthsEarned - alreadyCredited);
+    data.freezeCredited[name] = monthsEarned;
+  }
+  return data.freezes[name] || 0;
+}
+
+function tierRate(dayNumber){
+  if(dayNumber <= 365) return 1;
+  if(dayNumber <= 730) return 0.5;
+  return 0.25;
+}
+function streakValue(days){
+  let total = 0;
+  for(let d=1; d<=days; d++) total += tierRate(d);
+  return total;
+}
+
+// returns {lines:[{text, amount}], liveNote}
+function computeStreakLedger(data){
+  const names = Object.keys(data.participants || {});
+  const lines = [];
+  if(names.length < 2) return { lines, note: "Waiting for a second person to join." };
+  // MVP: pairwise, first two participants
+  const [A, B] = names;
+  const start = data.startDate;
+  const today = todayStr();
+  const totalDays = daysBetween(start, today);
+
+  // state machine per pair
+  let streakStartA = 0, streakStartB = 0; // day-index (0-based from start) where current streak began
+  let outA = false, outB = false;
+  let settlements = [];
+
+  for(let i=0; i<=totalDays; i++){
+    const dateStr = todayStr(new Date(new Date(start).getTime() + i*86400000));
+    const logA = (data.logs[A]||{})[dateStr];
+    const logB = (data.logs[B]||{})[dateStr];
+    const failA = logA === "fail";
+    const failB = logB === "fail";
+
+    if(failA && failB){
+      // neutralize
+      outA=false; outB=false; streakStartA=i+1; streakStartB=i+1;
+      settlements.push({type:"neutral", date: dateStr});
+      continue;
+    }
+    if(failA && !outA){
+      outA = true;
+      streakStartA = i+1;
+      if(outB){
+        // B already out and now settles against A's prior run? Shouldn't happen (only one can be "out" at a time before settling)
+      }
+    }
+    if(failB && !outB){
+      outB = true;
+      streakStartB = i+1;
+    }
+    // settlement: if one is out and the OTHER now also fails -> pay
+    if(failA && outB){
+      const bDays = i - streakStartB; // days B survived since their streak start, up to yesterday (they hadn't failed)
+      const amount = streakValue(Math.max(bDays,0));
+      settlements.push({type:"pay", from:A, to:B, amount, date: dateStr});
+      outA=true; outB=false; streakStartA=i+1; streakStartB=i+1;
+    } else if(failB && outA){
+      const aDays = i - streakStartA;
+      const amount = streakValue(Math.max(aDays,0));
+      settlements.push({type:"pay", from:B, to:A, amount, date: dateStr});
+      outB=true; outA=false; streakStartB=i+1; streakStartA=i+1;
+    }
+  }
+
+  settlements.filter(s=>s.type==="pay").forEach(s=>{
+    lines.push({ text: `${s.from} owes ${s.to}`, amount: s.amount, date: s.date });
+  });
+
+  // live running note: if exactly one participant is currently "out" and the other is going, show potential
+  let note = null;
+  if(outA && !outB){
+    const bDays = totalDays - streakStartB + 1;
+    note = `${B} is still going (day ${Math.max(bDays,0)}) — ${A} owes £${streakValue(Math.max(bDays,0)).toFixed(2)} if ${B} stopped today. Not payable until ${B} breaks their streak.`;
+  } else if(outB && !outA){
+    const aDays = totalDays - streakStartA + 1;
+    note = `${A} is still going (day ${Math.max(aDays,0)}) — ${B} owes £${streakValue(Math.max(aDays,0)).toFixed(2)} if ${A} stopped today. Not payable until ${A} breaks their streak.`;
+  }
+
+  return { lines, note };
+}
+
+function computeCycleLedger(data){
+  const names = Object.keys(data.participants || {});
+  const lines = [];
+  if(names.length < 2) return { lines, note: "Waiting for a second person to join." };
+  const [A, B] = names;
+  const start = data.startDate;
+  const today = todayStr();
+  const totalDays = daysBetween(start, today);
+  const rate = data.cycleRate || 5;
+  const cycles = Math.floor(totalDays / 6);
+
+  for(let c=0; c<cycles; c++){
+    const cycleStartIdx = c*6; // day 0 of this cycle is the "off day"
+    let aOk = true, bOk = true;
+    for(let d=1; d<=5; d++){
+      const idx = cycleStartIdx + d;
+      const dateStr = todayStr(new Date(new Date(start).getTime() + idx*86400000));
+      if(((data.logs[A]||{})[dateStr]) === "fail") aOk = false;
+      if(((data.logs[B]||{})[dateStr]) === "fail") bOk = false;
+    }
+    if(aOk && !bOk) lines.push({ text: `${B} owes ${A}`, amount: rate, date: `cycle ${c+1}` });
+    if(bOk && !aOk) lines.push({ text: `${A} owes ${B}`, amount: rate, date: `cycle ${c+1}` });
+  }
+
+  const curCycle = Math.floor(totalDays/6)+1;
+  const dayInCycle = totalDays % 6;
+  const note = `Currently in cycle ${curCycle}, day ${dayInCycle} of 6 (day 0 is the off day).`;
+  return { lines, note };
+}
+
+/* ---------- render ---------- */
+function stampFor(status){ return status === "pass" ? "✓" : status === "freeze" ? "❄" : "✕"; }
+
+function renderCalendars(data){
+  const box = document.getElementById("calendars");
+  box.innerHTML = "";
+  const start = data.startDate;
+  const today = todayStr();
+  const totalDays = daysBetween(start, today);
+  Object.keys(data.participants||{}).forEach(name=>{
+    const row = document.createElement("div");
+    row.className = "cal-row";
+    const label = document.createElement("div");
+    label.className = "cal-name";
+    const streak = currentStreak(data, name);
+    const freezeBadge = data.mode !== "cycle"
+      ? `<span class="freeze-chip">❄ ${creditFreezes(data, name)}</span>`
+      : "";
+    label.innerHTML = `<span>${name}</span><span style="display:flex; gap:8px; align-items:center;">${freezeBadge}<span class="dim mono">${streak} day streak</span></span>`;
+    row.appendChild(label);
+    const grid = document.createElement("div");
+    grid.className = "cal-grid";
+    const showDays = Math.min(totalDays+1, 21); // last 3 weeks
+    const offset = Math.max(0, totalDays+1-showDays);
+    for(let i=offset; i<=totalDays; i++){
+      const dateStr = todayStr(new Date(new Date(start).getTime() + i*86400000));
+      const cell = document.createElement("div");
+      const status = (data.logs[name]||{})[dateStr];
+      cell.className = "cal-cell" + (status ? " "+status : "") + (dateStr===today ? " today" : "");
+      cell.textContent = new Date(dateStr).getDate();
+      grid.appendChild(cell);
+    }
+    row.appendChild(grid);
+    box.appendChild(row);
+  });
+}
+
+function currentStreak(data, name){
+  const start = data.startDate;
+  const today = todayStr();
+  const totalDays = daysBetween(start, today);
+  let streak = 0;
+  for(let i=totalDays; i>=0; i--){
+    const dateStr = todayStr(new Date(new Date(start).getTime() + i*86400000));
+    const status = (data.logs[name]||{})[dateStr];
+    if(status === "fail") break;
+    if(status === "pass" || status === "freeze") streak++;
+    else if(dateStr !== today) break; // unlogged past day breaks the count; today unlogged is fine
+  }
+  return streak;
+}
+
+function renderLedger(data){
+  const result = data.mode === "cycle" ? computeCycleLedger(data) : computeStreakLedger(data);
+  const box = document.getElementById("ledger-box");
+  box.innerHTML = "";
+  if(result.lines.length === 0){
+    const p = document.createElement("div");
+    p.className = "ledger-empty";
+    p.textContent = "No settlements yet. Nobody's broken it — or you both did on the same day.";
+    box.appendChild(p);
+  } else {
+    result.lines.slice().reverse().forEach(l=>{
+      const row = document.createElement("div");
+      row.className = "ledger-line";
+      row.innerHTML = `<span>${l.text}</span><span class="fill"></span><span class="amt">£${l.amount.toFixed(2)}</span>`;
+      box.appendChild(row);
+    });
+  }
+  if(result.note){
+    const n = document.createElement("div");
+    n.className = "cfg-note";
+    n.textContent = result.note;
+    box.appendChild(n);
+  }
+}
+
+function renderToday(data){
+  const today = todayStr();
+  const myLog = (data.logs[SESSION.name]||{})[today];
+  const totalDays = daysBetween(data.startDate, today);
+  document.getElementById("today-label").textContent =
+    data.mode === "cycle"
+      ? `Day ${(totalDays%6)} of your 6-day cycle`
+      : `Day ${totalDays+1} of your pact`;
+
+  if(myLog){
+    document.getElementById("today-input").classList.add("hidden");
+    document.getElementById("today-done").classList.remove("hidden");
+    const stamp = document.getElementById("today-stamp");
+    stamp.className = "stamp " + myLog;
+    stamp.textContent = stampFor(myLog);
+    const doneText = myLog === "pass" ? "Logged clean for today. Come back tomorrow."
+      : myLog === "freeze" ? "Freeze used — today's protected, streak stays alive."
+      : "Logged as broken today. Tomorrow's a new start.";
+    document.getElementById("today-done-text").textContent = doneText;
+  } else {
+    document.getElementById("today-input").classList.remove("hidden");
+    document.getElementById("today-done").classList.add("hidden");
+    const freezeRow = document.getElementById("freeze-row");
+    const balance = data.mode !== "cycle" ? creditFreezes(data, SESSION.name) : 0;
+    if(data.mode !== "cycle" && balance > 0){
+      freezeRow.classList.remove("hidden");
+      document.getElementById("freeze-note").textContent =
+        `${balance} freeze${balance===1?"":"s"} banked — 1 earned per 30-day clean run, unused ones carry over.`;
+    } else {
+      freezeRow.classList.add("hidden");
+    }
+  }
+}
+
+function renderQuote(){
+  const day = Math.floor(Date.now()/86400000);
+  const [text, tag] = QUOTES[day % QUOTES.length];
+  document.getElementById("quote-box").innerHTML = `${text}<span>${tag}</span>`;
+}
+
+async function render(){
+  const data = await dbGet(SESSION.code);
+  if(!data) return;
+  // credit any freezes earned since last check, and persist
+  let changed = false;
+  Object.keys(data.participants||{}).forEach(name=>{
+    const before = (data.freezeCredited||{})[name] || 0;
+    creditFreezes(data, name);
+    const after = (data.freezeCredited||{})[name] || 0;
+    if(after !== before) changed = true;
+  });
+  if(changed) await dbSet(SESSION.code, data);
+  document.getElementById("app-title").textContent = data.title;
+  document.getElementById("app-code").textContent = data.code;
+  const catLabel = data.category === "fap" ? "No Do" : "No See";
+  const modeLabel = data.mode === "cycle" ? "6-day cycle" : "Tiered streak";
+  document.getElementById("app-badge").textContent = `${catLabel} · ${modeLabel}`;
+  renderToday(data);
+  renderCalendars(data);
+  renderLedger(data);
+  renderQuote();
+  document.getElementById("sync-time").textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+}
+
+async function checkIn(status){
+  const data = await dbGet(SESSION.code);
+  const today = todayStr();
+  data.logs[SESSION.name] = data.logs[SESSION.name] || {};
+  data.logs[SESSION.name][today] = status;
+  await dbSet(SESSION.code, data);
+  render();
+}
+
+async function useFreeze(){
+  const data = await dbGet(SESSION.code);
+  const balance = creditFreezes(data, SESSION.name);
+  if(balance <= 0){ alert("No freezes banked yet."); return; }
+  data.freezes[SESSION.name] = balance - 1;
+  data.logs[SESSION.name] = data.logs[SESSION.name] || {};
+  data.logs[SESSION.name][todayStr()] = "freeze";
+  await dbSet(SESSION.code, data);
+  render();
+}
+
+function boot(){
+  if(SESSION && SESSION.code && SESSION.name){
+    document.getElementById("onboard").classList.add("hidden");
+    document.getElementById("app").classList.remove("hidden");
+    render();
+    if(syncTimer) clearInterval(syncTimer);
+    syncTimer = setInterval(render, 8000);
+  }
+}
+boot();
+</script>
+</body>
+</html>
