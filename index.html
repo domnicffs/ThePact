@@ -144,6 +144,18 @@
     animation:fadeIn .4s var(--ease) both;
   }
   .cal-cell:hover{transform:translateY(-2px);}
+  .cal-cell.clickable{cursor:pointer;}
+  .cal-cell.clickable:hover{border-color:var(--gold-dim);}
+  .modal-backdrop{
+    position:fixed; inset:0; background:rgba(4,6,16,.7); z-index:50;
+    display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  .modal-card{
+    background:var(--surface); border:1px solid var(--rule); border-radius:var(--radius); padding:20px;
+    width:100%; max-width:340px; box-shadow:0 24px 60px -20px rgba(0,0,0,.7); animation:riseIn .25s var(--ease) both;
+  }
+  .modal-card .btn, .modal-card .btn-fail, .modal-card .btn-freeze, .modal-card .btn-ghost{margin-top:10px;}
+  .modal-card .btn:first-of-type{margin-top:14px;}
   .cal-cell.pass{background:var(--gold-soft); border-color:var(--gold-dim); color:var(--gold);}
   .cal-cell.fail{background:var(--rust-soft); border-color:var(--rust-dim); color:var(--rust);}
   .cal-cell.freeze{background:var(--ice-soft); border-color:var(--ice); color:var(--ice);}
@@ -225,7 +237,7 @@
       </div>
       <div class="field">
         <label>Pact code</label>
-        <input id="j-code" placeholder="e.g. 7F3K2Q" style="text-transform:uppercase">
+        <input id="j-code" placeholder="e.g. 7F3K2Q" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()">
       </div>
       <button class="btn" style="margin-top:22px" onclick="joinPact()">Join pact</button>
     </div>
@@ -241,7 +253,10 @@
       </div>
       <div style="text-align:right">
         <div class="code mono">CODE <span id="app-code">—</span></div>
-        <button class="btn-ghost" style="width:auto; padding:6px 10px; margin-top:8px; font-size:11px;" onclick="leavePact()">Switch</button>
+        <div style="display:flex; gap:6px; margin-top:8px;">
+          <button class="btn-ghost" style="width:auto; padding:6px 10px; font-size:11px;" onclick="leavePact()">Switch</button>
+          <button class="btn-ghost" style="width:auto; padding:6px 10px; font-size:11px; border-color:var(--rust); color:var(--rust);" onclick="leavePactPermanently()">Leave</button>
+        </div>
       </div>
     </header>
 
@@ -262,6 +277,7 @@
       <div id="today-done" class="checked-in hidden">
         <div class="stamp" id="today-stamp"></div>
         <div class="dim" style="font-size:13px" id="today-done-text">—</div>
+        <button class="btn-ghost" style="width:auto; padding:6px 14px; font-size:12px; margin-top:12px;" onclick="undoCheckIn()">Undo today's tick</button>
       </div>
     </div>
 
@@ -272,6 +288,17 @@
     <div class="card" id="ledger-box"></div>
 
     <p class="sync-note">Refreshes automatically · last synced <span id="sync-time">just now</span></p>
+  </div>
+</div>
+
+<div id="day-modal" class="hidden modal-backdrop" onclick="if(event.target===this) closeDayModal()">
+  <div class="modal-card">
+    <div class="section-title" id="modal-date-label">—</div>
+    <button class="btn btn-pass" onclick="modalLog('pass')">Stayed clean</button>
+    <button class="btn-fail" onclick="modalLog('fail')">I broke it</button>
+    <button class="btn-freeze hidden" id="modal-freeze-btn" onclick="modalLog('freeze')">❄ Use a freeze</button>
+    <button class="btn-ghost hidden" id="modal-clear-btn" onclick="modalClear()">Clear this day</button>
+    <button class="btn-ghost" onclick="closeDayModal()">Cancel</button>
   </div>
 </div>
 
@@ -433,6 +460,19 @@ function leavePact(){
   document.getElementById("onboard").classList.remove("hidden");
 }
 
+async function leavePactPermanently(){
+  if(!confirm("Leave this pact for good? You'll be removed from it and this device will forget it. Your friend will still see the pact, just without you in it.")) return;
+  const data = await dbGet(SESSION.code);
+  if(data){
+    delete data.participants[SESSION.name];
+    delete data.logs[SESSION.name];
+    delete data.freezes[SESSION.name];
+    delete data.freezeCredited[SESSION.name];
+    await dbSet(SESSION.code, data);
+  }
+  leavePact();
+}
+
 /* ---------- reward math ---------- */
 /* ---------- freezes ---------- */
 // awards 1 freeze for every complete 30-day clean run (pass or freeze), accumulating if unused
@@ -589,8 +629,12 @@ function renderCalendars(data){
       const dateStr = todayStr(new Date(new Date(start).getTime() + i*86400000));
       const cell = document.createElement("div");
       const status = (data.logs[name]||{})[dateStr];
-      cell.className = "cal-cell" + (status ? " "+status : "") + (dateStr===today ? " today" : "");
+      const isSelf = name === SESSION.name;
+      cell.className = "cal-cell" + (status ? " "+status : "") + (dateStr===today ? " today" : "") + (isSelf ? " clickable" : "");
       cell.textContent = new Date(dateStr).getDate();
+      if(isSelf){
+        cell.addEventListener("click", ()=> openDayModal(dateStr, data));
+      }
       grid.appendChild(cell);
     }
     row.appendChild(grid);
@@ -702,24 +746,69 @@ async function render(){
   document.getElementById("sync-time").textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
 }
 
-async function checkIn(status){
+async function logDay(dateStr, status){
   const data = await dbGet(SESSION.code);
-  const today = todayStr();
+  if(status === "freeze"){
+    const balance = creditFreezes(data, SESSION.name);
+    if(balance <= 0){ alert("No freezes banked yet."); return; }
+    data.freezes[SESSION.name] = balance - 1;
+  }
   data.logs[SESSION.name] = data.logs[SESSION.name] || {};
-  data.logs[SESSION.name][today] = status;
+  data.logs[SESSION.name][dateStr] = status;
   await dbSet(SESSION.code, data);
   render();
 }
 
-async function useFreeze(){
+async function undoDay(dateStr){
   const data = await dbGet(SESSION.code);
-  const balance = creditFreezes(data, SESSION.name);
-  if(balance <= 0){ alert("No freezes banked yet."); return; }
-  data.freezes[SESSION.name] = balance - 1;
-  data.logs[SESSION.name] = data.logs[SESSION.name] || {};
-  data.logs[SESSION.name][todayStr()] = "freeze";
+  const current = (data.logs[SESSION.name]||{})[dateStr];
+  if(current === "freeze"){
+    data.freezes[SESSION.name] = (data.freezes[SESSION.name] || 0) + 1; // refund the freeze
+  }
+  if(data.logs[SESSION.name]) delete data.logs[SESSION.name][dateStr];
   await dbSet(SESSION.code, data);
   render();
+}
+
+async function checkIn(status){
+  await logDay(todayStr(), status);
+}
+
+async function useFreeze(){
+  await logDay(todayStr(), "freeze");
+}
+
+async function undoCheckIn(){
+  await undoDay(todayStr());
+}
+
+let pendingDate = null;
+function openDayModal(dateStr, data){
+  pendingDate = dateStr;
+  const modeCycle = data.mode === "cycle";
+  const balance = modeCycle ? 0 : creditFreezes(data, SESSION.name);
+  const current = (data.logs[SESSION.name]||{})[dateStr];
+  const label = dateStr === todayStr()
+    ? "Today"
+    : new Date(dateStr).toLocaleDateString(undefined, {weekday:"short", month:"short", day:"numeric"});
+  document.getElementById("modal-date-label").textContent = label;
+  document.getElementById("modal-freeze-btn").classList.toggle("hidden", modeCycle || balance<=0);
+  document.getElementById("modal-clear-btn").classList.toggle("hidden", !current);
+  document.getElementById("day-modal").classList.remove("hidden");
+}
+function closeDayModal(){
+  document.getElementById("day-modal").classList.add("hidden");
+  pendingDate = null;
+}
+async function modalLog(status){
+  if(!pendingDate) return;
+  await logDay(pendingDate, status);
+  closeDayModal();
+}
+async function modalClear(){
+  if(!pendingDate) return;
+  await undoDay(pendingDate);
+  closeDayModal();
 }
 
 function boot(){
