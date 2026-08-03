@@ -322,12 +322,26 @@ paintStars();
 
 /* ---------- tiny "db" abstraction: firebase REST if configured, else localStorage ---------- */
 async function dbGet(code){
+  let data;
   if(FIREBASE_URL){
     const res = await fetch(`${FIREBASE_URL}/pacts/${code}.json`);
-    return await res.json();
+    data = await res.json();
+  } else {
+    const all = JSON.parse(localStorage.getItem(LOCAL_KEY) || "{}");
+    data = all[code] || null;
   }
-  const all = JSON.parse(localStorage.getItem(LOCAL_KEY) || "{}");
-  return all[code] || null;
+  if(!data) return null;
+  // Firebase strips empty objects on save, so rebuild anything that may have vanished
+  data.participants = data.participants || {};
+  data.logs = data.logs || {};
+  data.freezes = data.freezes || {};
+  data.freezeCredited = data.freezeCredited || {};
+  Object.keys(data.participants).forEach(n=>{
+    if(!data.logs[n]) data.logs[n] = {};
+    if(data.freezes[n] === undefined) data.freezes[n] = 0;
+    if(data.freezeCredited[n] === undefined) data.freezeCredited[n] = 0;
+  });
+  return data;
 }
 async function dbSet(code, data){
   if(FIREBASE_URL){
