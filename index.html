@@ -187,6 +187,12 @@
       <p class="tag">A streak, held with someone else.<br>What you build gets banked. What you break, you pay for.</p>
     </div>
 
+    <div class="card hidden" id="rejoin-box" style="text-align:center;">
+      <div class="dim" style="font-size:12px; text-transform:uppercase; letter-spacing:.08em;">Pick up where you left off</div>
+      <div style="margin:10px 0 4px; font-size:15px;" id="rejoin-label">—</div>
+      <button class="btn" onclick="rejoinLast()">Rejoin this pact</button>
+    </div>
+
     <div class="tabs">
       <div class="tab active" data-tab="create">Start a pact</div>
       <div class="tab" data-tab="join">Join a pact</div>
@@ -211,7 +217,7 @@
       <div class="field">
         <label>Format</label>
         <div class="modeopt">
-          <div class="modeopt-row"><input type="radio" name="mode" value="streak" checked> Tiered streak</div>
+          <div class="modeopt-row"><input type="radio" name="mode" value="streak" checked> Streak Mode</div>
           <div class="desc">One long streak each. Whoever breaks first owes the other their full streak's value when they eventually break too. £1/day (yr 1) → 50p/day (yr 2) → 25p/day (yr 3+, capped).</div>
         </div>
         <div class="modeopt">
@@ -264,6 +270,7 @@
 
     <div class="card today-card" id="today-card">
       <div class="daynum" id="today-label">—</div>
+      <div class="mono" id="live-timer" style="font-size:13px; color:var(--gold); margin-bottom:12px;">—</div>
       <div id="today-input">
         <div class="today-actions">
           <button class="btn btn-pass" onclick="checkIn('pass')">Stayed clean</button>
@@ -312,6 +319,7 @@ const FIREBASE_URL = "https://the-pact-ad8e8-default-rtdb.europe-west1.firebased
 
 const LOCAL_KEY = "pact_local_store_v1";
 const SESSION_KEY = "pact_session_v1";
+const LAST_SESSION_KEY = "pact_last_session_v1";
 
 const QUOTES = [
   ["The urge is temporary. The regret has a longer memory.", "Reminder"],
@@ -328,6 +336,30 @@ const QUOTES = [
 
 let SESSION = JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
 let syncTimer = null;
+let liveRef = null;
+
+function formatDuration(ms){
+  const totalSec = Math.floor(ms / 1000);
+  const days = Math.floor(totalSec / 86400);
+  const hours = Math.floor((totalSec % 86400) / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+  return `${days} day${days===1?"":"s"}, ${hours} hr${hours===1?"":"s"}, ${mins} min${mins===1?"":"s"}, ${secs} sec${secs===1?"":"s"}`;
+}
+
+function tickLiveTimer(){
+  const el = document.getElementById("live-timer");
+  if(!el || !liveRef) return;
+  const now = Date.now();
+  let diff = liveRef.type === "up" ? now - liveRef.from : liveRef.to - now;
+  if(diff < 0) diff = 0;
+  if(liveRef.type === "down" && diff === 0){
+    el.textContent = "Cycle window closed — check in to see the result.";
+  } else {
+    el.textContent = liveRef.label + formatDuration(diff);
+  }
+}
+setInterval(tickLiveTimer, 1000);
 
 /* ---------- starfield ---------- */
 function paintStars(){
@@ -429,6 +461,7 @@ async function createPact(){
   await dbSet(code, data);
   SESSION = { code, name };
   localStorage.setItem(SESSION_KEY, JSON.stringify(SESSION));
+  localStorage.setItem(LAST_SESSION_KEY, JSON.stringify(SESSION));
   boot();
 }
 
@@ -449,15 +482,22 @@ async function joinPact(){
   await dbSet(code, data);
   SESSION = { code, name };
   localStorage.setItem(SESSION_KEY, JSON.stringify(SESSION));
+  localStorage.setItem(LAST_SESSION_KEY, JSON.stringify(SESSION));
   boot();
 }
 
-function leavePact(){
+function clearSession(clearLast){
   localStorage.removeItem(SESSION_KEY);
+  if(clearLast) localStorage.removeItem(LAST_SESSION_KEY);
   SESSION = null;
   if(syncTimer) clearInterval(syncTimer);
   document.getElementById("app").classList.add("hidden");
   document.getElementById("onboard").classList.remove("hidden");
+  refreshRejoinUI();
+}
+
+function leavePact(){
+  clearSession(false);
 }
 
 async function leavePactPermanently(){
@@ -470,7 +510,7 @@ async function leavePactPermanently(){
     delete data.freezeCredited[SESSION.name];
     await dbSet(SESSION.code, data);
   }
-  leavePact();
+  clearSession(true);
 }
 
 /* ---------- reward math ---------- */
@@ -642,19 +682,25 @@ function renderCalendars(data){
   });
 }
 
-function currentStreak(data, name){
+function streakInfo(data, name){
   const start = data.startDate;
   const today = todayStr();
   const totalDays = daysBetween(start, today);
   let streak = 0;
+  let startIdx = totalDays;
   for(let i=totalDays; i>=0; i--){
     const dateStr = todayStr(new Date(new Date(start).getTime() + i*86400000));
     const status = (data.logs[name]||{})[dateStr];
     if(status === "fail") break;
-    if(status === "pass" || status === "freeze") streak++;
+    if(status === "pass" || status === "freeze"){ streak++; startIdx = i; }
     else if(dateStr !== today) break; // unlogged past day breaks the count; today unlogged is fine
   }
-  return streak;
+  const startDateStr = todayStr(new Date(new Date(start).getTime() + startIdx*86400000));
+  return { streak, startDate: streak > 0 ? startDateStr : today };
+}
+
+function currentStreak(data, name){
+  return streakInfo(data, name).streak;
 }
 
 function renderLedger(data){
@@ -690,6 +736,17 @@ function renderToday(data){
     data.mode === "cycle"
       ? `Day ${(totalDays%6)} of your 6-day cycle`
       : `Day ${totalDays+1} of your pact`;
+
+  if(data.mode === "cycle"){
+    const cycleIdx = Math.floor(totalDays / 6);
+    const boundaryIdx = (cycleIdx + 1) * 6;
+    const boundaryDateStr = todayStr(new Date(new Date(data.startDate).getTime() + boundaryIdx*86400000));
+    liveRef = { type: "down", to: new Date(boundaryDateStr + "T00:00:00").getTime(), label: "Time left to hit day 6: " };
+  } else {
+    const info = streakInfo(data, SESSION.name);
+    liveRef = { type: "up", from: new Date(info.startDate + "T00:00:00").getTime(), label: "Current streak: " };
+  }
+  tickLiveTimer();
 
   if(myLog){
     document.getElementById("today-input").classList.add("hidden");
@@ -737,7 +794,7 @@ async function render(){
   document.getElementById("app-title").textContent = data.title;
   document.getElementById("app-code").textContent = data.code;
   const catLabel = data.category === "fap" ? "No Do" : "No See";
-  const modeLabel = data.mode === "cycle" ? "6-day cycle" : "Tiered streak";
+  const modeLabel = data.mode === "cycle" ? "6-day cycle" : "Streak Mode";
   document.getElementById("app-badge").textContent = `${catLabel} · ${modeLabel}`;
   renderToday(data);
   renderCalendars(data);
@@ -811,6 +868,25 @@ async function modalClear(){
   closeDayModal();
 }
 
+function refreshRejoinUI(){
+  const box = document.getElementById("rejoin-box");
+  const last = JSON.parse(localStorage.getItem(LAST_SESSION_KEY) || "null");
+  if(last && last.code && last.name && !(SESSION && SESSION.code === last.code && SESSION.name === last.name)){
+    box.classList.remove("hidden");
+    document.getElementById("rejoin-label").textContent = `${last.name} in ${last.code}`;
+  } else {
+    box.classList.add("hidden");
+  }
+}
+
+function rejoinLast(){
+  const last = JSON.parse(localStorage.getItem(LAST_SESSION_KEY) || "null");
+  if(!last) return;
+  SESSION = last;
+  localStorage.setItem(SESSION_KEY, JSON.stringify(SESSION));
+  boot();
+}
+
 function boot(){
   if(SESSION && SESSION.code && SESSION.name){
     document.getElementById("onboard").classList.add("hidden");
@@ -819,6 +895,7 @@ function boot(){
     if(syncTimer) clearInterval(syncTimer);
     syncTimer = setInterval(render, 8000);
   }
+  refreshRejoinUI();
 }
 boot();
 </script>
