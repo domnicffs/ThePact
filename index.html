@@ -60,7 +60,7 @@
   }
   input,select{
     width:100%; background:var(--surface-2); border:1px solid var(--rule); color:var(--ink);
-    border-radius:12px; padding:12px 14px; font-size:15px; font-family:inherit; margin-top:6px;
+    border-radius:12px; padding:12px 14px; font-size:16px; font-family:inherit; margin-top:6px;
     transition:border-color .2s var(--ease), box-shadow .2s var(--ease);
   }
   input:focus,select:focus{outline:none; border-color:var(--gold-dim); box-shadow:0 0 0 3px var(--gold-soft);}
@@ -139,6 +139,11 @@
   /* calendar */
   .cal-row{margin-bottom:14px; animation:riseIn .4s var(--ease) both;}
   .cal-name{font-size:13px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;}
+  .name-edit-btn{
+    background:transparent; border:none; color:var(--ink-dim); font-size:12px; padding:2px 4px; margin-left:4px;
+    cursor:pointer; border-radius:6px;
+  }
+  .name-edit-btn:hover{color:var(--gold); background:var(--gold-soft);}
   .freeze-chip{
     font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--ice); border:1px solid var(--ice);
     background:var(--ice-soft); border-radius:20px; padding:2px 8px; transition:transform .2s var(--ease);
@@ -163,7 +168,9 @@
   .cal-cell.offday{border-style:dashed; border-color:var(--ice);}
   .cal-cell.cyclestart{border-color:var(--gold); box-shadow:0 0 0 1px var(--gold-soft) inset;}
   .cal-cell .start-mark{
-    position:absolute; top:1px; left:2px; font-size:6px; color:var(--gold); font-family:'IBM Plex Mono',monospace;
+    position:absolute; top:-5px; left:-5px; width:15px; height:15px; border-radius:50%;
+    background:var(--gold); color:var(--rust); display:flex; align-items:center; justify-content:center;
+    font-size:9px; line-height:1; box-shadow:0 2px 5px -1px rgba(0,0,0,.6); z-index:1;
   }
   .cal-cell .offday-mark{
     position:absolute; top:1px; right:2px; font-size:7px; color:var(--ice); font-family:'IBM Plex Mono',monospace;
@@ -176,7 +183,7 @@
   .modal-card{
     background:var(--surface); border:1px solid var(--rule); border-radius:var(--radius); padding:20px;
     width:100%; max-width:340px; box-shadow:0 24px 60px -20px rgba(0,0,0,.7); animation:riseIn .25s var(--ease) both;
-    overflow:hidden;
+    box-sizing:border-box;
   }
   input[type="date"]{ width:100%; max-width:100%; min-width:0; box-sizing:border-box; }
   .modal-card .btn, .modal-card .btn-fail, .modal-card .btn-freeze, .modal-card .btn-ghost{margin-top:10px;}
@@ -285,7 +292,6 @@
       <div style="text-align:right">
         <div class="code mono">CODE <span id="app-code">—</span></div>
         <div style="display:flex; gap:6px; margin-top:8px;">
-          <button class="btn-ghost" style="width:auto; padding:6px 10px; font-size:11px;" onclick="openRenameModal()">Rename</button>
           <button class="btn-ghost" style="width:auto; padding:6px 10px; font-size:11px;" onclick="openStartDateModal()">Restart date</button>
           <button class="btn-ghost" style="width:auto; padding:6px 10px; font-size:11px;" onclick="leavePact()">Switch</button>
           <button class="btn-ghost" style="width:auto; padding:6px 10px; font-size:11px; border-color:var(--rust); color:var(--rust);" onclick="leavePactPermanently()">Leave</button>
@@ -337,7 +343,7 @@
       </span>
     </div>
     <div class="cal-weekday-row mono">
-      <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+      <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
     </div>
     <div id="calendars"></div>
 
@@ -757,7 +763,28 @@ function computeCycleLedger(data){
 
   const curCycle = Math.floor(totalDays/6)+1;
   const dayInCycle = totalDays % 6;
-  const note = `Currently in cycle ${curCycle}, day ${dayInCycle+1} of 6 (Day 6 is the Off Day).`;
+  let note = `Currently in cycle ${curCycle}, day ${dayInCycle+1} of 6 (Day 6 is the Off Day).`;
+
+  // pending settlement preview for the in-progress cycle
+  const curCycleStartIdx = Math.floor(totalDays/6)*6;
+  let curFailsA = 0, curFailsB = 0;
+  for(let d=0; d<=4; d++){
+    const idx = curCycleStartIdx + d;
+    if(idx > totalDays) break; // this day of the cycle hasn't happened yet
+    const dateStr = todayStr(new Date(new Date(start).getTime() + idx*86400000));
+    if(((data.logs[A]||{})[dateStr]) === "fail") curFailsA++;
+    if(((data.logs[B]||{})[dateStr]) === "fail") curFailsB++;
+  }
+  if(curFailsA > 0 && curFailsB > 0){
+    note += ` You've both slipped this cycle — that neutralises it unless one of you turns it around before day 6.`;
+  } else if(curFailsA > 0){
+    const amount = rate + Math.max(0, curFailsA-1) * EXTRA_FAIL_RATE;
+    note += ` ${A} has slipped this cycle — if ${B} stays clean through day 6, ${A} will owe ${B} £${amount.toFixed(2)}.`;
+  } else if(curFailsB > 0){
+    const amount = rate + Math.max(0, curFailsB-1) * EXTRA_FAIL_RATE;
+    note += ` ${B} has slipped this cycle — if ${A} stays clean through day 6, ${B} will owe ${A} £${amount.toFixed(2)}.`;
+  }
+
   return { lines, note };
 }
 
@@ -766,8 +793,8 @@ function stampFor(status){ return status === "pass" ? "✓" : status === "freeze
 
 function ensureCalMonthCursor(){
   if(!calMonthCursor){
-    const t = new Date();
-    calMonthCursor = { year: t.getFullYear(), month: t.getMonth() };
+    const [y, m] = todayStr().split("-").map(Number);
+    calMonthCursor = { year: y, month: m - 1 };
   }
 }
 function shiftCalMonth(delta){
@@ -787,7 +814,7 @@ function renderCalendars(data){
   document.getElementById("cal-month-label").textContent =
     new Date(year, month, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
 
-  const firstWeekday = new Date(year, month, 1).getDay();
+  const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7; // convert Sun=0..Sat=6 to Mon=0..Sun=6
   const daysInMonth = new Date(year, month+1, 0).getDate();
   const todayVal = todayStr();
   const start = data.startDate;
@@ -801,7 +828,11 @@ function renderCalendars(data){
     const freezeBadge = data.mode !== "cycle"
       ? `<span class="freeze-chip">❄ ${creditFreezes(data, name)}</span>`
       : "";
-    label.innerHTML = `<span>${name}</span><span style="display:flex; gap:8px; align-items:center;">${freezeBadge}<span class="dim mono">${streak} day streak</span></span>`;
+    const isSelfRow = name === SESSION.name;
+    const editIcon = isSelfRow
+      ? `<button class="name-edit-btn" onclick="openRenameModal()" title="Rename yourself">✎</button>`
+      : "";
+    label.innerHTML = `<span>${name}${editIcon}</span><span style="display:flex; gap:8px; align-items:center;">${freezeBadge}<span class="dim mono">${streak} day streak</span></span>`;
     row.appendChild(label);
 
     const grid = document.createElement("div");
@@ -827,7 +858,7 @@ function renderCalendars(data){
 
       let classes = "cal-cell" + (status ? " "+status : "") + (dateStr===todayVal ? " today" : "");
       if(isOffDay) classes += " offday";
-      const isCycleStart = (data.startHistory||[]).includes(dateStr);
+      const isCycleStart = dateStr === data.startDate;
       if(isCycleStart) classes += " cyclestart";
       if(isSelf && withinRange) classes += " clickable";
       cell.className = classes;
