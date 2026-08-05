@@ -161,6 +161,10 @@
   .cal-cell{position:relative;}
   .cal-cell.blank{border:none; background:transparent;}
   .cal-cell.offday{border-style:dashed; border-color:var(--ice);}
+  .cal-cell.cyclestart{border-color:var(--gold); box-shadow:0 0 0 1px var(--gold-soft) inset;}
+  .cal-cell .start-mark{
+    position:absolute; top:1px; left:2px; font-size:6px; color:var(--gold); font-family:'IBM Plex Mono',monospace;
+  }
   .cal-cell .offday-mark{
     position:absolute; top:1px; right:2px; font-size:7px; color:var(--ice); font-family:'IBM Plex Mono',monospace;
   }
@@ -172,7 +176,9 @@
   .modal-card{
     background:var(--surface); border:1px solid var(--rule); border-radius:var(--radius); padding:20px;
     width:100%; max-width:340px; box-shadow:0 24px 60px -20px rgba(0,0,0,.7); animation:riseIn .25s var(--ease) both;
+    overflow:hidden;
   }
+  input[type="date"]{ width:100%; max-width:100%; min-width:0; box-sizing:border-box; }
   .modal-card .btn, .modal-card .btn-fail, .modal-card .btn-freeze, .modal-card .btn-ghost{margin-top:10px;}
   .modal-card .btn:first-of-type{margin-top:14px;}
   .cal-cell.pass{background:var(--gold-soft); border-color:var(--gold-dim); color:var(--gold);}
@@ -279,6 +285,7 @@
       <div style="text-align:right">
         <div class="code mono">CODE <span id="app-code">—</span></div>
         <div style="display:flex; gap:6px; margin-top:8px;">
+          <button class="btn-ghost" style="width:auto; padding:6px 10px; font-size:11px;" onclick="openRenameModal()">Rename</button>
           <button class="btn-ghost" style="width:auto; padding:6px 10px; font-size:11px;" onclick="openStartDateModal()">Restart date</button>
           <button class="btn-ghost" style="width:auto; padding:6px 10px; font-size:11px;" onclick="leavePact()">Switch</button>
           <button class="btn-ghost" style="width:auto; padding:6px 10px; font-size:11px; border-color:var(--rust); color:var(--rust);" onclick="leavePactPermanently()">Leave</button>
@@ -359,6 +366,16 @@
     <input type="date" id="startdate-input" style="margin-top:14px;">
     <button class="btn" style="margin-top:14px;" onclick="saveStartDate()">Save</button>
     <button class="btn-ghost" onclick="closeStartDateModal()">Cancel</button>
+  </div>
+</div>
+
+<div id="rename-modal" class="hidden modal-backdrop" onclick="if(event.target===this) closeRenameModal()">
+  <div class="modal-card">
+    <div class="section-title">Rename yourself</div>
+    <p class="dim" style="font-size:13px; margin:10px 0 0;">Changes how your name appears to everyone in this pact — your history and streak carry over.</p>
+    <input type="text" id="rename-input" style="margin-top:14px;">
+    <button class="btn" style="margin-top:14px;" onclick="saveRename()">Save</button>
+    <button class="btn-ghost" onclick="closeRenameModal()">Cancel</button>
   </div>
 </div>
 
@@ -472,6 +489,7 @@ async function dbGet(code){
   data.logs = data.logs || {};
   data.freezes = data.freezes || {};
   data.freezeCredited = data.freezeCredited || {};
+  data.startHistory = (data.startHistory && data.startHistory.length) ? data.startHistory : [data.startDate];
   Object.keys(data.participants).forEach(n=>{
     if(!data.logs[n]) data.logs[n] = {};
     if(data.freezes[n] === undefined) data.freezes[n] = 0;
@@ -496,7 +514,20 @@ function genCode(){
 }
 function todayStr(d){
   d = d || new Date();
-  return d.toISOString().slice(0,10);
+  // Always resolve to the Europe/London calendar date, regardless of the device's own timezone
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+}
+function londonOffsetMinutes(atMs){
+  // Returns Europe/London's UTC offset in minutes (e.g. +60 during BST, 0 during GMT) for a given instant
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/London", timeZoneName: "shortOffset" }).formatToParts(new Date(atMs));
+  const tz = parts.find(p => p.type === "timeZoneName");
+  const match = tz && /GMT([+-]\d+)?/.exec(tz.value);
+  return (match && match[1]) ? parseInt(match[1], 10) * 60 : 0;
+}
+function londonMidnightMs(dateStr){
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const utcGuess = Date.UTC(y, m-1, d, 0, 0, 0);
+  return utcGuess - londonOffsetMinutes(utcGuess) * 60000;
 }
 function daysBetween(a,b){
   return Math.round((new Date(b) - new Date(a)) / 86400000);
@@ -783,7 +814,7 @@ function renderCalendars(data){
     }
 
     for(let d=1; d<=daysInMonth; d++){
-      const dateStr = todayStr(new Date(year, month, d));
+      const dateStr = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
       const cell = document.createElement("div");
       const status = (data.logs[name]||{})[dateStr];
       const isSelf = name === SESSION.name;
@@ -796,6 +827,8 @@ function renderCalendars(data){
 
       let classes = "cal-cell" + (status ? " "+status : "") + (dateStr===todayVal ? " today" : "");
       if(isOffDay) classes += " offday";
+      const isCycleStart = (data.startHistory||[]).includes(dateStr);
+      if(isCycleStart) classes += " cyclestart";
       if(isSelf && withinRange) classes += " clickable";
       cell.className = classes;
       cell.textContent = d;
@@ -804,6 +837,12 @@ function renderCalendars(data){
         const mark = document.createElement("span");
         mark.className = "offday-mark";
         mark.textContent = "6";
+        cell.appendChild(mark);
+      }
+      if(isCycleStart){
+        const mark = document.createElement("span");
+        mark.className = "start-mark";
+        mark.textContent = "\u25B6";
         cell.appendChild(mark);
       }
       if(isSelf && withinRange){
@@ -868,17 +907,17 @@ function renderToday(data){
   const totalDays = daysBetween(data.startDate, today);
   document.getElementById("today-label").textContent =
     data.mode === "cycle"
-      ? `Day ${(totalDays%6)+1} of your 6-day cycle`
+      ? `Day ${(totalDays%6)+1} of your 6-Day Cycle`
       : `Day ${totalDays+1} of your pact`;
 
   if(data.mode === "cycle"){
     const cycleIdx = Math.floor(totalDays / 6);
     const boundaryIdx = (cycleIdx + 1) * 6;
     const boundaryDateStr = todayStr(new Date(new Date(data.startDate).getTime() + boundaryIdx*86400000));
-    liveRef = { type: "down", to: new Date(boundaryDateStr + "T00:00:00").getTime(), total: 6*86400000, label: "Time Left" };
+    liveRef = { type: "down", to: londonMidnightMs(boundaryDateStr), total: 6*86400000, label: "Time Left to End Cycle" };
   } else {
     const info = streakInfo(data, SESSION.name);
-    liveRef = { type: "up", from: new Date(info.startDate + "T00:00:00").getTime(), label: "Current Streak" };
+    liveRef = { type: "up", from: londonMidnightMs(info.startDate), label: "Current Streak" };
   }
   document.getElementById("hourglass-wrap").classList.toggle("hidden", data.mode !== "cycle");
   tickLiveTimer();
@@ -1017,9 +1056,41 @@ async function saveStartDate(){
   const newDate = document.getElementById("startdate-input").value;
   if(!newDate){ alert("Pick a date first."); return; }
   const data = await dbGet(SESSION.code);
+  data.startHistory = data.startHistory || [data.startDate];
+  if(!data.startHistory.includes(newDate)) data.startHistory.push(newDate);
   data.startDate = newDate;
   await dbSet(SESSION.code, data);
   closeStartDateModal();
+  render();
+}
+
+function openRenameModal(){
+  document.getElementById("rename-input").value = SESSION.name;
+  document.getElementById("rename-modal").classList.remove("hidden");
+}
+function closeRenameModal(){
+  document.getElementById("rename-modal").classList.add("hidden");
+}
+async function saveRename(){
+  const newName = document.getElementById("rename-input").value.trim();
+  const oldName = SESSION.name;
+  if(!newName){ alert("Enter a name."); return; }
+  if(newName === oldName){ closeRenameModal(); return; }
+  const data = await dbGet(SESSION.code);
+  if(data.participants[newName]){ alert("Someone in this pact already uses that name."); return; }
+  data.participants[newName] = data.participants[oldName];
+  delete data.participants[oldName];
+  data.logs[newName] = data.logs[oldName] || {};
+  delete data.logs[oldName];
+  data.freezes[newName] = data.freezes[oldName] || 0;
+  delete data.freezes[oldName];
+  data.freezeCredited[newName] = data.freezeCredited[oldName] || 0;
+  delete data.freezeCredited[oldName];
+  await dbSet(SESSION.code, data);
+  SESSION.name = newName;
+  localStorage.setItem(SESSION_KEY, JSON.stringify(SESSION));
+  localStorage.setItem(LAST_SESSION_KEY, JSON.stringify(SESSION));
+  closeRenameModal();
   render();
 }
 
