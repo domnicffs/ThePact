@@ -77,7 +77,7 @@
     100%{ transform:translateY(44px); opacity:0; }
   }
   #sand-drop{ animation:sandDrop 1.1s linear infinite; transform-box:fill-box; }
-  #sand-top, #sand-bottom{ transition:transform .9s linear; }
+  #sand-top, #sand-bottom{ transition:y .9s linear, height .9s linear; }
   @media (prefers-reduced-motion: reduce){
     *{animation:none !important; transition:none !important;}
   }
@@ -154,6 +154,17 @@
   .cal-cell:hover{transform:translateY(-2px);}
   .cal-cell.clickable{cursor:pointer;}
   .cal-cell.clickable:hover{border-color:var(--gold-dim);}
+  .cal-weekday-row{
+    display:grid; grid-template-columns:repeat(7, 1fr); gap:5px; margin-bottom:6px;
+    text-align:center; font-size:10px; color:var(--ink-dim);
+  }
+  .cal-cell{position:relative;}
+  .cal-cell.blank{border:none; background:transparent;}
+  .cal-cell.offday{border-style:dashed; border-color:var(--ice);}
+  .cal-cell .offday-mark{
+    position:absolute; top:1px; right:2px; font-size:7px; color:var(--ice); font-family:'IBM Plex Mono',monospace;
+  }
+  .cal-cell.outmonth{opacity:.3;}
   .modal-backdrop{
     position:fixed; inset:0; background:rgba(4,6,16,.7); z-index:50;
     display:flex; align-items:center; justify-content:center; padding:20px;
@@ -230,7 +241,7 @@
         </div>
         <div class="modeopt">
           <div class="modeopt-row"><input type="radio" name="mode" value="cycle"> 6-Day Cycle</div>
-          <div class="desc">5 clean days = 1 off day on repeat. Win when one fails and another succeed.</div>
+          <div class="desc">5 clean days = 1 off day on repeat. Win when one fails and another succeed. Extra relapses within the same 5 days add £1 each to the pot.</div>
         </div>
       </div>
       <div class="field hidden" id="cycle-rate-field">
@@ -268,6 +279,7 @@
       <div style="text-align:right">
         <div class="code mono">CODE <span id="app-code">—</span></div>
         <div style="display:flex; gap:6px; margin-top:8px;">
+          <button class="btn-ghost" style="width:auto; padding:6px 10px; font-size:11px;" onclick="openStartDateModal()">Restart date</button>
           <button class="btn-ghost" style="width:auto; padding:6px 10px; font-size:11px;" onclick="leavePact()">Switch</button>
           <button class="btn-ghost" style="width:auto; padding:6px 10px; font-size:11px; border-color:var(--rust); color:var(--rust);" onclick="leavePactPermanently()">Leave</button>
         </div>
@@ -283,12 +295,15 @@
           <path d="M6,6 L54,6 L30,48 L54,94 L6,94 L30,48 Z" fill="none" stroke="var(--ink-dim)" stroke-width="2" stroke-linejoin="round"/>
           <clipPath id="topClip"><polygon points="6,6 54,6 30,48"/></clipPath>
           <clipPath id="bottomClip"><polygon points="30,52 54,94 6,94"/></clipPath>
-          <rect id="sand-top" x="6" y="6" width="48" height="42" fill="var(--gold)" clip-path="url(#topClip)" style="transform-origin:30px 48px;"/>
-          <rect id="sand-bottom" x="6" y="52" width="48" height="42" fill="var(--gold)" clip-path="url(#bottomClip)" style="transform-origin:30px 94px;"/>
+          <rect id="sand-top" x="6" y="6" width="48" height="42" fill="var(--gold)" clip-path="url(#topClip)"/>
+          <rect id="sand-bottom" x="6" y="80" width="48" height="14" fill="var(--gold)" clip-path="url(#bottomClip)"/>
           <circle id="sand-drop" cx="30" cy="50" r="1.4" fill="var(--gold)"/>
         </svg>
       </div>
-      <div class="mono" id="live-timer" style="font-size:13px; color:var(--gold); margin-bottom:12px;">—</div>
+      <div style="text-align:center; margin-bottom:14px;">
+        <div class="dim" style="font-size:11px; text-transform:uppercase; letter-spacing:.1em;" id="live-timer-label">—</div>
+        <div class="mono" id="live-timer-value" style="font-size:14px; color:var(--gold); margin-top:4px;">—</div>
+      </div>
       <div id="today-input">
         <div class="today-actions">
           <button class="btn btn-pass" onclick="checkIn('pass')">Stayed clean</button>
@@ -306,7 +321,17 @@
       </div>
     </div>
 
-    <div class="section-title">Calendar</div>
+    <div class="section-title" style="display:flex; align-items:center; justify-content:space-between;">
+      <span>Calendar</span>
+      <span style="display:flex; align-items:center; gap:10px;">
+        <button class="btn-ghost" style="width:auto; padding:4px 10px; font-size:14px;" onclick="shiftCalMonth(-1)">‹</button>
+        <span class="mono" id="cal-month-label" style="color:var(--ink); font-size:12px; text-transform:none; letter-spacing:0;">—</span>
+        <button class="btn-ghost" style="width:auto; padding:4px 10px; font-size:14px;" onclick="shiftCalMonth(1)">›</button>
+      </span>
+    </div>
+    <div class="cal-weekday-row mono">
+      <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+    </div>
     <div id="calendars"></div>
 
     <div class="section-title">Ledger</div>
@@ -324,6 +349,16 @@
     <button class="btn-freeze hidden" id="modal-freeze-btn" onclick="modalLog('freeze')">❄ Use a freeze</button>
     <button class="btn-ghost hidden" id="modal-clear-btn" onclick="modalClear()">Clear this day</button>
     <button class="btn-ghost" onclick="closeDayModal()">Cancel</button>
+  </div>
+</div>
+
+<div id="startdate-modal" class="hidden modal-backdrop" onclick="if(event.target===this) closeStartDateModal()">
+  <div class="modal-card">
+    <div class="section-title">Restart date</div>
+    <p class="dim" style="font-size:13px; margin:10px 0 0;">Move the pact's start date — useful if you both failed and want to begin the next cycle or streak from a specific day. This applies for everyone in the pact.</p>
+    <input type="date" id="startdate-input" style="margin-top:14px;">
+    <button class="btn" style="margin-top:14px;" onclick="saveStartDate()">Save</button>
+    <button class="btn-ghost" onclick="closeStartDateModal()">Cancel</button>
   </div>
 </div>
 
@@ -355,6 +390,8 @@ const QUOTES = [
 let SESSION = JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
 let syncTimer = null;
 let liveRef = null;
+let calMonthCursor = null;
+let lastData = null;
 
 function formatDuration(ms){
   const totalSec = Math.floor(ms / 1000);
@@ -362,26 +399,41 @@ function formatDuration(ms){
   const hours = Math.floor((totalSec % 86400) / 3600);
   const mins = Math.floor((totalSec % 3600) / 60);
   const secs = totalSec % 60;
-  return `${days} day${days===1?"":"s"}, ${hours} hr${hours===1?"":"s"}, ${mins} min${mins===1?"":"s"}, ${secs} sec${secs===1?"":"s"}`;
+  const parts = [
+    `${days} day${days===1?"":"s"}`,
+    `${hours} hr${hours===1?"":"s"}`,
+    `${mins} min${mins===1?"":"s"}`,
+    `${secs} sec${secs===1?"":"s"}`
+  ];
+  return parts.slice(0, -1).join(", ") + " and " + parts[parts.length-1];
 }
 
 function tickLiveTimer(){
-  const el = document.getElementById("live-timer");
-  if(!el || !liveRef) return;
+  const labelEl = document.getElementById("live-timer-label");
+  const valueEl = document.getElementById("live-timer-value");
+  if(!labelEl || !valueEl || !liveRef) return;
   const now = Date.now();
   let diff = liveRef.type === "up" ? now - liveRef.from : liveRef.to - now;
   if(diff < 0) diff = 0;
   if(liveRef.type === "down" && diff === 0){
-    el.textContent = "Cycle window closed — check in to see the result.";
+    labelEl.textContent = "Cycle window closed";
+    valueEl.textContent = "Check in to see the result";
   } else {
-    el.textContent = liveRef.label + formatDuration(diff);
+    labelEl.textContent = liveRef.label;
+    valueEl.textContent = formatDuration(diff);
   }
   if(liveRef.type === "down" && liveRef.total){
     const fraction = Math.max(0, Math.min(1, diff / liveRef.total));
+    // top chamber: 6,6 to 54,48 (apex). Remaining sand stays anchored at the apex (y=48) and drains from the top.
+    const topFull = 42, topApex = 48;
+    const topH = topFull * fraction;
     const top = document.getElementById("sand-top");
+    if(top){ top.setAttribute("y", topApex - topH); top.setAttribute("height", topH); }
+    // bottom chamber: 30,52 (apex) to 6/54,94 (base). Sand piles up from the base (y=94) upward.
+    const bottomFull = 42, bottomBase = 94;
+    const bottomH = bottomFull * (1 - fraction);
     const bottom = document.getElementById("sand-bottom");
-    if(top) top.style.transform = `scaleY(${fraction})`;
-    if(bottom) bottom.style.transform = `scaleY(${1 - fraction})`;
+    if(bottom){ bottom.setAttribute("y", bottomBase - bottomH); bottom.setAttribute("height", bottomH); }
   }
 }
 setInterval(tickLiveTimer, 1000);
@@ -647,34 +699,68 @@ function computeCycleLedger(data){
   const rate = data.cycleRate || 5;
   const cycles = Math.floor(totalDays / 6);
 
+  const EXTRA_FAIL_RATE = 1;
+
   for(let c=0; c<cycles; c++){
-    const cycleStartIdx = c*6; // day 0 of this cycle is the "off day"
-    let aOk = true, bOk = true;
-    for(let d=1; d<=5; d++){
+    const cycleStartIdx = c*6; // days 0-4 are the 5 clean days; day 5 (the 6th day) is the off day
+    let failsA = 0, failsB = 0;
+    for(let d=0; d<=4; d++){
       const idx = cycleStartIdx + d;
       const dateStr = todayStr(new Date(new Date(start).getTime() + idx*86400000));
-      if(((data.logs[A]||{})[dateStr]) === "fail") aOk = false;
-      if(((data.logs[B]||{})[dateStr]) === "fail") bOk = false;
+      if(((data.logs[A]||{})[dateStr]) === "fail") failsA++;
+      if(((data.logs[B]||{})[dateStr]) === "fail") failsB++;
     }
-    if(aOk && !bOk) lines.push({ text: `${B} owes ${A}`, amount: rate, date: `cycle ${c+1}` });
-    if(bOk && !aOk) lines.push({ text: `${A} owes ${B}`, amount: rate, date: `cycle ${c+1}` });
+    const extraA = Math.max(0, failsA - 1);
+    const extraB = Math.max(0, failsB - 1);
+    if(failsA > 0 && failsB === 0){
+      const amount = rate + extraA * EXTRA_FAIL_RATE;
+      const extraNote = extraA > 0 ? ` +${extraA} extra relapse${extraA===1?"":"s"}` : "";
+      lines.push({ text: `${B} owes ${A}`, amount, date: `cycle ${c+1}${extraNote}` });
+    }
+    if(failsB > 0 && failsA === 0){
+      const amount = rate + extraB * EXTRA_FAIL_RATE;
+      const extraNote = extraB > 0 ? ` +${extraB} extra relapse${extraB===1?"":"s"}` : "";
+      lines.push({ text: `${A} owes ${B}`, amount, date: `cycle ${c+1}${extraNote}` });
+    }
   }
 
   const curCycle = Math.floor(totalDays/6)+1;
   const dayInCycle = totalDays % 6;
-  const note = `Currently in cycle ${curCycle}, day ${dayInCycle+1} of 6 (day 1 is the off day).`;
+  const note = `Currently in cycle ${curCycle}, day ${dayInCycle+1} of 6 (Day 6 is the Off Day).`;
   return { lines, note };
 }
 
 /* ---------- render ---------- */
 function stampFor(status){ return status === "pass" ? "✓" : status === "freeze" ? "❄" : "✕"; }
 
+function ensureCalMonthCursor(){
+  if(!calMonthCursor){
+    const t = new Date();
+    calMonthCursor = { year: t.getFullYear(), month: t.getMonth() };
+  }
+}
+function shiftCalMonth(delta){
+  ensureCalMonthCursor();
+  let m = calMonthCursor.month + delta;
+  let y = calMonthCursor.year;
+  if(m < 0){ m = 11; y--; } else if(m > 11){ m = 0; y++; }
+  calMonthCursor = { year: y, month: m };
+  if(lastData) renderCalendars(lastData);
+}
+
 function renderCalendars(data){
+  ensureCalMonthCursor();
   const box = document.getElementById("calendars");
   box.innerHTML = "";
+  const { year, month } = calMonthCursor;
+  document.getElementById("cal-month-label").textContent =
+    new Date(year, month, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+
+  const firstWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const todayVal = todayStr();
   const start = data.startDate;
-  const today = todayStr();
-  const totalDays = daysBetween(start, today);
+
   Object.keys(data.participants||{}).forEach(name=>{
     const row = document.createElement("div");
     row.className = "cal-row";
@@ -686,18 +772,41 @@ function renderCalendars(data){
       : "";
     label.innerHTML = `<span>${name}</span><span style="display:flex; gap:8px; align-items:center;">${freezeBadge}<span class="dim mono">${streak} day streak</span></span>`;
     row.appendChild(label);
+
     const grid = document.createElement("div");
     grid.className = "cal-grid";
-    const showDays = Math.min(totalDays+1, 21); // last 3 weeks
-    const offset = Math.max(0, totalDays+1-showDays);
-    for(let i=offset; i<=totalDays; i++){
-      const dateStr = todayStr(new Date(new Date(start).getTime() + i*86400000));
+
+    for(let b=0; b<firstWeekday; b++){
+      const blank = document.createElement("div");
+      blank.className = "cal-cell blank";
+      grid.appendChild(blank);
+    }
+
+    for(let d=1; d<=daysInMonth; d++){
+      const dateStr = todayStr(new Date(year, month, d));
       const cell = document.createElement("div");
       const status = (data.logs[name]||{})[dateStr];
       const isSelf = name === SESSION.name;
-      cell.className = "cal-cell" + (status ? " "+status : "") + (dateStr===today ? " today" : "") + (isSelf ? " clickable" : "");
-      cell.textContent = new Date(dateStr).getDate();
-      if(isSelf){
+      const withinRange = dateStr >= start && dateStr <= todayVal;
+
+      let isOffDay = false;
+      if(data.mode === "cycle" && dateStr >= start){
+        isOffDay = (daysBetween(start, dateStr) % 6 === 5);
+      }
+
+      let classes = "cal-cell" + (status ? " "+status : "") + (dateStr===todayVal ? " today" : "");
+      if(isOffDay) classes += " offday";
+      if(isSelf && withinRange) classes += " clickable";
+      cell.className = classes;
+      cell.textContent = d;
+
+      if(isOffDay){
+        const mark = document.createElement("span");
+        mark.className = "offday-mark";
+        mark.textContent = "6";
+        cell.appendChild(mark);
+      }
+      if(isSelf && withinRange){
         cell.addEventListener("click", ()=> openDayModal(dateStr, data));
       }
       grid.appendChild(cell);
@@ -741,7 +850,7 @@ function renderLedger(data){
     result.lines.slice().reverse().forEach(l=>{
       const row = document.createElement("div");
       row.className = "ledger-line";
-      row.innerHTML = `<span>${l.text}</span><span class="fill"></span><span class="amt">£${l.amount.toFixed(2)}</span>`;
+      row.innerHTML = `<span>${l.text}<br><span class="dim" style="font-size:11px;">${l.date}</span></span><span class="fill"></span><span class="amt">£${l.amount.toFixed(2)}</span>`;
       box.appendChild(row);
     });
   }
@@ -766,10 +875,10 @@ function renderToday(data){
     const cycleIdx = Math.floor(totalDays / 6);
     const boundaryIdx = (cycleIdx + 1) * 6;
     const boundaryDateStr = todayStr(new Date(new Date(data.startDate).getTime() + boundaryIdx*86400000));
-    liveRef = { type: "down", to: new Date(boundaryDateStr + "T00:00:00").getTime(), total: 6*86400000, label: "Time left to hit day 6: " };
+    liveRef = { type: "down", to: new Date(boundaryDateStr + "T00:00:00").getTime(), total: 6*86400000, label: "Time Left" };
   } else {
     const info = streakInfo(data, SESSION.name);
-    liveRef = { type: "up", from: new Date(info.startDate + "T00:00:00").getTime(), label: "Current streak: " };
+    liveRef = { type: "up", from: new Date(info.startDate + "T00:00:00").getTime(), label: "Current Streak" };
   }
   document.getElementById("hourglass-wrap").classList.toggle("hidden", data.mode !== "cycle");
   tickLiveTimer();
@@ -808,6 +917,7 @@ function renderQuote(){
 async function render(){
   const data = await dbGet(SESSION.code);
   if(!data) return;
+  lastData = data;
   // credit any freezes earned since last check, and persist
   let changed = false;
   Object.keys(data.participants||{}).forEach(name=>{
@@ -892,6 +1002,25 @@ async function modalClear(){
   if(!pendingDate) return;
   await undoDay(pendingDate);
   closeDayModal();
+}
+
+async function openStartDateModal(){
+  const data = await dbGet(SESSION.code);
+  if(!data) return;
+  document.getElementById("startdate-input").value = data.startDate;
+  document.getElementById("startdate-modal").classList.remove("hidden");
+}
+function closeStartDateModal(){
+  document.getElementById("startdate-modal").classList.add("hidden");
+}
+async function saveStartDate(){
+  const newDate = document.getElementById("startdate-input").value;
+  if(!newDate){ alert("Pick a date first."); return; }
+  const data = await dbGet(SESSION.code);
+  data.startDate = newDate;
+  await dbSet(SESSION.code, data);
+  closeStartDateModal();
+  render();
 }
 
 function refreshRejoinUI(){
