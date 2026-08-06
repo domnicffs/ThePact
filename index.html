@@ -196,6 +196,17 @@
   .cal-cell.future{opacity:.35;}
 
   /* ledger */
+  .ledger-table{ margin-bottom:6px; border:1px solid var(--rule); border-radius:12px; overflow:hidden; }
+  .ledger-row{
+    display:grid; grid-template-columns:1.2fr 1fr 1fr; align-items:center;
+    padding:10px 12px; border-bottom:1px solid var(--rule); font-size:13px;
+  }
+  .ledger-row:last-child{ border-bottom:none; }
+  .ledger-head{
+    background:var(--surface-2); font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-dim);
+  }
+  .ledger-actual{ color:var(--gold); font-family:'IBM Plex Mono',monospace; font-weight:600; }
+  .ledger-potential{ color:var(--rust); font-family:'IBM Plex Mono',monospace; font-weight:600; }
   .ledger-line{
     display:flex; align-items:baseline; gap:6px; padding:12px 0; border-bottom:1px dashed var(--rule); font-size:14px;
     animation:fadeIn .4s var(--ease) both;
@@ -696,7 +707,9 @@ function streakValue(days){
 function computeStreakLedger(data){
   const names = Object.keys(data.participants || {});
   const lines = [];
-  if(names.length < 2) return { lines, note: "Waiting for a second person to join." };
+  const actual = {}; names.forEach(n=>actual[n]=0);
+  const potential = {}; names.forEach(n=>potential[n]=0);
+  if(names.length < 2) return { lines, note: "Waiting for a second person to join.", actual, potential };
   // MVP: pairwise, first two participants
   const [A, B] = names;
   const start = data.startDate;
@@ -748,25 +761,33 @@ function computeStreakLedger(data){
 
   settlements.filter(s=>s.type==="pay").forEach(s=>{
     lines.push({ text: `${s.from} owes ${s.to}`, amount: s.amount, date: s.date });
+    actual[s.to] = (actual[s.to]||0) + s.amount;
+    actual[s.from] = (actual[s.from]||0) - s.amount;
   });
 
   // live running note: if exactly one participant is currently "out" and the other is going, show potential
   let note = null;
   if(outA && !outB){
     const bDays = totalDays - streakStartB + 1;
-    note = `${B} is still going (day ${Math.max(bDays,0)}) — ${A} owes £${streakValue(Math.max(bDays,0)).toFixed(2)} if ${B} stopped today. Not payable until ${B} breaks their streak.`;
+    const amt = streakValue(Math.max(bDays,0));
+    potential[B] = amt;
+    note = `${B} is still going (day ${Math.max(bDays,0)}) — ${A} owes £${amt.toFixed(2)} if ${B} stopped today. Not payable until ${B} breaks their streak.`;
   } else if(outB && !outA){
     const aDays = totalDays - streakStartA + 1;
-    note = `${A} is still going (day ${Math.max(aDays,0)}) — ${B} owes £${streakValue(Math.max(aDays,0)).toFixed(2)} if ${A} stopped today. Not payable until ${A} breaks their streak.`;
+    const amt = streakValue(Math.max(aDays,0));
+    potential[A] = amt;
+    note = `${A} is still going (day ${Math.max(aDays,0)}) — ${B} owes £${amt.toFixed(2)} if ${A} stopped today. Not payable until ${A} breaks their streak.`;
   }
 
-  return { lines, note };
+  return { lines, note, actual, potential };
 }
 
 function computeCycleLedger(data){
   const names = Object.keys(data.participants || {});
   const lines = [];
-  if(names.length < 2) return { lines, note: "Waiting for a second person to join." };
+  const actual = {}; names.forEach(n=>actual[n]=0);
+  const potential = {}; names.forEach(n=>potential[n]=0);
+  if(names.length < 2) return { lines, note: "Waiting for a second person to join.", actual, potential };
   const [A, B] = names;
   const start = data.startDate;
   const today = todayStr();
@@ -791,11 +812,13 @@ function computeCycleLedger(data){
       const amount = rate + extraA * EXTRA_FAIL_RATE;
       const extraNote = extraA > 0 ? ` +${extraA} extra relapse${extraA===1?"":"s"}` : "";
       lines.push({ text: `${B} owes ${A}`, amount, date: `cycle ${c+1}${extraNote}` });
+      actual[A] += amount; actual[B] -= amount;
     }
     if(failsB > 0 && failsA === 0){
       const amount = rate + extraB * EXTRA_FAIL_RATE;
       const extraNote = extraB > 0 ? ` +${extraB} extra relapse${extraB===1?"":"s"}` : "";
       lines.push({ text: `${A} owes ${B}`, amount, date: `cycle ${c+1}${extraNote}` });
+      actual[B] += amount; actual[A] -= amount;
     }
   }
 
@@ -817,13 +840,15 @@ function computeCycleLedger(data){
     note += ` You've both slipped this cycle — that neutralises it unless one of you turns it around before day 6.`;
   } else if(curFailsA > 0){
     const amount = rate + Math.max(0, curFailsA-1) * EXTRA_FAIL_RATE;
+    potential[B] = amount;
     note += ` ${A} has slipped this cycle — if ${B} stays clean through day 6, ${A} will owe ${B} £${amount.toFixed(2)}.`;
   } else if(curFailsB > 0){
     const amount = rate + Math.max(0, curFailsB-1) * EXTRA_FAIL_RATE;
+    potential[A] = amount;
     note += ` ${B} has slipped this cycle — if ${A} stays clean through day 6, ${B} will owe ${A} £${amount.toFixed(2)}.`;
   }
 
-  return { lines, note };
+  return { lines, note, actual, potential };
 }
 
 /* ---------- render ---------- */
@@ -949,12 +974,38 @@ function renderLedger(data){
   const result = data.mode === "cycle" ? computeCycleLedger(data) : computeStreakLedger(data);
   const box = document.getElementById("ledger-box");
   box.innerHTML = "";
+
+  const names = Object.keys(data.participants || {});
+  if(names.length >= 2){
+    const table = document.createElement("div");
+    table.className = "ledger-table";
+    const header = document.createElement("div");
+    header.className = "ledger-row ledger-head";
+    header.innerHTML = `<span>Person</span><span>Actual</span><span>Potential</span>`;
+    table.appendChild(header);
+    names.forEach(n=>{
+      const actualVal = result.actual ? (result.actual[n]||0) : 0;
+      const potentialVal = result.potential ? (result.potential[n]||0) : 0;
+      const row = document.createElement("div");
+      row.className = "ledger-row";
+      const actualDisplay = actualVal === 0 ? "£0.00" : `${actualVal > 0 ? "+" : "-"}£${Math.abs(actualVal).toFixed(2)}`;
+      row.innerHTML = `<span>${n}</span><span class="ledger-actual">${actualDisplay}</span><span class="ledger-potential">${potentialVal > 0 ? "+£"+potentialVal.toFixed(2) : "—"}</span>`;
+      table.appendChild(row);
+    });
+    box.appendChild(table);
+  }
+
   if(result.lines.length === 0){
     const p = document.createElement("div");
     p.className = "ledger-empty";
     p.textContent = "No settlements yet. Nobody's broken it — or you both did on the same day.";
     box.appendChild(p);
   } else {
+    const historyTitle = document.createElement("div");
+    historyTitle.className = "dim";
+    historyTitle.style.cssText = "font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin-top:16px; margin-bottom:4px;";
+    historyTitle.textContent = "History";
+    box.appendChild(historyTitle);
     result.lines.slice().reverse().forEach(l=>{
       const row = document.createElement("div");
       row.className = "ledger-line";
