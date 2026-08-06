@@ -185,7 +185,8 @@
     width:100%; max-width:340px; box-shadow:0 24px 60px -20px rgba(0,0,0,.7); animation:riseIn .25s var(--ease) both;
     box-sizing:border-box;
   }
-  input[type="date"]{ width:100%; max-width:100%; min-width:0; box-sizing:border-box; }
+  .date-select-row{ display:flex; gap:6px; margin-top:6px; }
+  .date-select-row select{ flex:1 1 0; width:auto; min-width:0; margin-top:0; padding:12px 4px; text-align:center; }
   .modal-card .btn, .modal-card .btn-fail, .modal-card .btn-freeze, .modal-card .btn-ghost{margin-top:10px;}
   .modal-card .btn:first-of-type{margin-top:14px;}
   .cal-cell.pass{background:var(--gold-soft); border-color:var(--gold-dim); color:var(--gold);}
@@ -263,7 +264,7 @@
       </div>
       <div class="field">
         <label>Start date</label>
-        <input id="c-start" type="date">
+        <div id="c-start-picker" class="date-select-row"></div>
       </div>
       <button class="btn" style="margin-top:22px" onclick="createPact()">Create pact</button>
     </div>
@@ -369,7 +370,7 @@
   <div class="modal-card">
     <div class="section-title">Restart date</div>
     <p class="dim" style="font-size:13px; margin:10px 0 0;">Move the pact's start date — useful if you both failed and want to begin the next cycle or streak from a specific day. This applies for everyone in the pact.</p>
-    <input type="date" id="startdate-input" style="margin-top:14px;">
+    <div id="startdate-picker" class="date-select-row" style="margin-top:14px;"></div>
     <button class="btn" style="margin-top:14px;" onclick="saveStartDate()">Save</button>
     <button class="btn-ghost" onclick="closeStartDateModal()">Cancel</button>
   </div>
@@ -523,6 +524,43 @@ function todayStr(d){
   // Always resolve to the Europe/London calendar date, regardless of the device's own timezone
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 }
+function renderDatePicker(container, valueStr){
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const [vy, vm, vd] = (valueStr || todayStr()).split("-").map(Number);
+  container.innerHTML = `
+    <select class="ds-day"></select>
+    <select class="ds-month"></select>
+    <select class="ds-year"></select>
+  `;
+  const daySel = container.querySelector(".ds-day");
+  const monthSel = container.querySelector(".ds-month");
+  const yearSel = container.querySelector(".ds-year");
+  for(let i=1; i<=31; i++){
+    const o = document.createElement("option");
+    o.value = i; o.textContent = i;
+    daySel.appendChild(o);
+  }
+  months.forEach((mn, i)=>{
+    const o = document.createElement("option");
+    o.value = i+1; o.textContent = mn;
+    monthSel.appendChild(o);
+  });
+  const curYear = new Date().getFullYear();
+  for(let yy=curYear-3; yy<=curYear+1; yy++){
+    const o = document.createElement("option");
+    o.value = yy; o.textContent = yy;
+    yearSel.appendChild(o);
+  }
+  daySel.value = vd;
+  monthSel.value = vm;
+  yearSel.value = vy;
+}
+function readDatePicker(container){
+  const d = String(container.querySelector(".ds-day").value).padStart(2, "0");
+  const m = String(container.querySelector(".ds-month").value).padStart(2, "0");
+  const y = container.querySelector(".ds-year").value;
+  return `${y}-${m}-${d}`;
+}
 function londonOffsetMinutes(atMs){
   // Returns Europe/London's UTC offset in minutes (e.g. +60 during BST, 0 during GMT) for a given instant
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/London", timeZoneName: "shortOffset" }).formatToParts(new Date(atMs));
@@ -553,7 +591,7 @@ document.querySelectorAll('input[name="mode"]').forEach(r=>{
     document.getElementById("cycle-rate-field").classList.toggle("hidden", r.value !== "cycle" || !r.checked);
   });
 });
-document.getElementById("c-start").value = todayStr();
+renderDatePicker(document.getElementById("c-start-picker"), todayStr());
 
 async function createPact(){
   const name = document.getElementById("c-name").value.trim();
@@ -566,7 +604,7 @@ async function createPact(){
     category: document.getElementById("c-category").value,
     mode,
     cycleRate: parseFloat(document.getElementById("c-cyclerate").value) || 5,
-    startDate: document.getElementById("c-start").value || todayStr(),
+    startDate: readDatePicker(document.getElementById("c-start-picker")),
     participants: { [name]: { joinedAt: Date.now() } },
     logs: { [name]: {} },
     freezes: { [name]: 0 },
@@ -1077,14 +1115,14 @@ async function modalClear(){
 async function openStartDateModal(){
   const data = await dbGet(SESSION.code);
   if(!data) return;
-  document.getElementById("startdate-input").value = data.startDate;
+  renderDatePicker(document.getElementById("startdate-picker"), data.startDate);
   document.getElementById("startdate-modal").classList.remove("hidden");
 }
 function closeStartDateModal(){
   document.getElementById("startdate-modal").classList.add("hidden");
 }
 async function saveStartDate(){
-  const newDate = document.getElementById("startdate-input").value;
+  const newDate = readDatePicker(document.getElementById("startdate-picker"));
   if(!newDate){ alert("Pick a date first."); return; }
   const data = await dbGet(SESSION.code);
   data.startHistory = data.startHistory || [data.startDate];
