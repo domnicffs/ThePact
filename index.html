@@ -267,11 +267,13 @@
           <div class="desc">Keep going until one fails and one succeed by an extra day. £1 per day in year 1 - 50p per day in year 2 - 25p per day in year 3+ (Only payable when one fails and the other go an extra day). Freeze your Streak once per month once you complete a whole month of the challenge.</div>
         </div>
         <div class="modeopt">
-          <div class="modeopt-row"><input type="radio" name="mode" value="cycle"> 6-Day Cycle</div>
-          <div class="desc">5 clean days = 1 off day on repeat. Win when one fails and another succeed. Extra relapses within the same 5 days add £1 each to the pot.</div>
+          <div class="modeopt-row"><input type="radio" name="mode" value="cycle"> Days Cycle</div>
+          <div class="desc">Choose how many clean days in a row, then 1 off day, on repeat. Win when one fails and another succeed. Extra relapses within the same clean stretch add £1 each to the pot.</div>
         </div>
       </div>
       <div class="field hidden" id="cycle-rate-field">
+        <label>Clean days before the off day</label>
+        <input id="c-cycledays" type="number" value="5" min="1" step="1">
         <label>Payout per completed cycle</label>
         <input id="c-cyclerate" type="number" value="5" step="0.5">
       </div>
@@ -510,6 +512,7 @@ async function dbGet(code){
   data.freezes = data.freezes || {};
   data.freezeCredited = data.freezeCredited || {};
   data.startHistory = (data.startHistory && data.startHistory.length) ? data.startHistory : [data.startDate];
+  data.cleanDays = data.cleanDays || 5;
   Object.keys(data.participants).forEach(n=>{
     if(!data.logs[n]) data.logs[n] = {};
     if(data.freezes[n] === undefined) data.freezes[n] = 0;
@@ -617,6 +620,7 @@ async function createPact(){
     category: document.getElementById("c-category").value,
     mode,
     cycleRate: parseFloat(document.getElementById("c-cyclerate").value) || 5,
+    cleanDays: parseInt(document.getElementById("c-cycledays").value, 10) || 5,
     startDate: readDatePicker(document.getElementById("c-start-picker")),
     participants: { [name]: { joinedAt: Date.now() } },
     logs: { [name]: {} },
@@ -795,14 +799,16 @@ function computeCycleLedger(data){
   const today = todayStr();
   const totalDays = daysBetween(start, today);
   const rate = data.cycleRate || 5;
-  const cycles = Math.floor(totalDays / 6);
+  const cleanDays = data.cleanDays || 5;
+  const cycleLen = cleanDays + 1; // + 1 off day
+  const cycles = Math.floor(totalDays / cycleLen);
 
   const EXTRA_FAIL_RATE = 1;
 
   for(let c=0; c<cycles; c++){
-    const cycleStartIdx = c*6; // days 0-4 are the 5 clean days; day 5 (the 6th day) is the off day
+    const cycleStartIdx = c*cycleLen; // days 0..cleanDays-1 are the clean days; the last day of the cycle is the off day
     let failsA = 0, failsB = 0;
-    for(let d=0; d<=4; d++){
+    for(let d=0; d<cleanDays; d++){
       const idx = cycleStartIdx + d;
       const dateStr = todayStr(new Date(new Date(start).getTime() + idx*86400000));
       if(((data.logs[A]||{})[dateStr]) === "fail") failsA++;
@@ -824,14 +830,14 @@ function computeCycleLedger(data){
     }
   }
 
-  const curCycle = Math.floor(totalDays/6)+1;
-  const dayInCycle = totalDays % 6;
-  let note = `Currently in cycle ${curCycle}, day ${dayInCycle+1} of 6 (Day 6 is the Off Day).`;
+  const curCycle = Math.floor(totalDays/cycleLen)+1;
+  const dayInCycle = totalDays % cycleLen;
+  let note = `Currently in cycle ${curCycle}, day ${dayInCycle+1} of ${cycleLen} (Day ${cycleLen} is the Off Day).`;
 
   // pending settlement preview for the in-progress cycle
-  const curCycleStartIdx = Math.floor(totalDays/6)*6;
+  const curCycleStartIdx = Math.floor(totalDays/cycleLen)*cycleLen;
   let curFailsA = 0, curFailsB = 0;
-  for(let d=0; d<=4; d++){
+  for(let d=0; d<cleanDays; d++){
     const idx = curCycleStartIdx + d;
     if(idx > totalDays) break; // this day of the cycle hasn't happened yet
     const dateStr = todayStr(new Date(new Date(start).getTime() + idx*86400000));
@@ -839,15 +845,15 @@ function computeCycleLedger(data){
     if(((data.logs[B]||{})[dateStr]) === "fail") curFailsB++;
   }
   if(curFailsA > 0 && curFailsB > 0){
-    note += ` You've both slipped this cycle — that neutralises it unless one of you turns it around before day 6.`;
+    note += ` You've both slipped this cycle — that neutralises it unless one of you turns it around before day ${cycleLen}.`;
   } else if(curFailsA > 0){
     const amount = rate + Math.max(0, curFailsA-1) * EXTRA_FAIL_RATE;
     potential[B] = amount;
-    note += ` ${A} has slipped this cycle — if ${B} stays clean through day 6, ${A} will owe ${B} £${amount.toFixed(2)}.`;
+    note += ` ${A} has slipped this cycle — if ${B} stays clean through day ${cycleLen}, ${A} will owe ${B} £${amount.toFixed(2)}.`;
   } else if(curFailsB > 0){
     const amount = rate + Math.max(0, curFailsB-1) * EXTRA_FAIL_RATE;
     potential[A] = amount;
-    note += ` ${B} has slipped this cycle — if ${A} stays clean through day 6, ${B} will owe ${A} £${amount.toFixed(2)}.`;
+    note += ` ${B} has slipped this cycle — if ${A} stays clean through day ${cycleLen}, ${B} will owe ${A} £${amount.toFixed(2)}.`;
   }
 
   return { lines, note, actual, potential };
@@ -918,7 +924,8 @@ function renderCalendars(data){
 
       let isOffDay = false;
       if(data.mode === "cycle" && dateStr >= start){
-        isOffDay = (daysBetween(start, dateStr) % 6 === 5);
+        const cycleLen = (data.cleanDays || 5) + 1;
+        isOffDay = (daysBetween(start, dateStr) % cycleLen === cycleLen - 1);
       }
 
       let classes = "cal-cell" + (status ? " "+status : "") + (dateStr===todayVal ? " today" : "");
@@ -932,7 +939,7 @@ function renderCalendars(data){
       if(isOffDay){
         const mark = document.createElement("span");
         mark.className = "offday-mark";
-        mark.textContent = "6";
+        mark.textContent = (data.cleanDays || 5) + 1;
         cell.appendChild(mark);
       }
       if(isCycleStart){
@@ -1027,16 +1034,17 @@ function renderToday(data){
   const today = todayStr();
   const myLog = (data.logs[SESSION.name]||{})[today];
   const totalDays = daysBetween(data.startDate, today);
+  const cycleLen = (data.cleanDays || 5) + 1;
   document.getElementById("today-label").textContent =
     data.mode === "cycle"
-      ? `Day ${(totalDays%6)+1} of your 6-Day Cycle`
+      ? `Day ${(totalDays%cycleLen)+1} of your Days Cycle`
       : `Day ${totalDays+1} of your pact`;
 
   if(data.mode === "cycle"){
-    const cycleIdx = Math.floor(totalDays / 6);
-    const boundaryIdx = (cycleIdx + 1) * 6;
+    const cycleIdx = Math.floor(totalDays / cycleLen);
+    const boundaryIdx = (cycleIdx + 1) * cycleLen;
     const boundaryDateStr = todayStr(new Date(new Date(data.startDate).getTime() + boundaryIdx*86400000));
-    liveRef = { type: "down", to: londonMidnightMs(boundaryDateStr), total: 6*86400000, label: "Time Left to End Cycle" };
+    liveRef = { type: "down", to: londonMidnightMs(boundaryDateStr), total: cycleLen*86400000, label: "Time Left to End Cycle" };
   } else {
     const info = streakInfo(data, SESSION.name);
     liveRef = { type: "up", from: londonMidnightMs(info.startDate), label: "Current Streak" };
@@ -1091,7 +1099,7 @@ async function render(){
   document.getElementById("app-title").textContent = data.title;
   document.getElementById("app-code").textContent = data.code;
   const catLabel = data.category === "fap" ? "No Do" : "No See";
-  const modeLabel = data.mode === "cycle" ? "6-Day Cycle" : "Streak Mode";
+  const modeLabel = data.mode === "cycle" ? "Days Cycle" : "Streak Mode";
   document.getElementById("app-badge").textContent = `${catLabel} · ${modeLabel}`;
   renderToday(data);
   renderCalendars(data);
