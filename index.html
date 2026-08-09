@@ -308,7 +308,7 @@
       <div style="text-align:right">
         <div class="code mono">CODE <span id="app-code">—</span></div>
         <div style="display:flex; gap:6px; margin-top:8px;">
-          <button class="btn-ghost" style="width:auto; padding:6px 10px; font-size:11px;" onclick="openStartDateModal()">Restart date</button>
+          <button class="btn-ghost" style="width:auto; padding:6px 10px; font-size:11px;" onclick="openStartDateModal()">Settings</button>
           <button class="btn-ghost" style="width:auto; padding:6px 10px; font-size:11px;" onclick="leavePact()">Switch</button>
           <button class="btn-ghost" style="width:auto; padding:6px 10px; font-size:11px; border-color:var(--rust); color:var(--rust);" onclick="leavePactPermanently()">Leave</button>
         </div>
@@ -383,9 +383,15 @@
 
 <div id="startdate-modal" class="hidden modal-backdrop" onclick="if(event.target===this) closeStartDateModal()">
   <div class="modal-card">
-    <div class="section-title">Restart date</div>
-    <p class="dim" style="font-size:13px; margin:10px 0 0;">Move the pact's start date — useful if you both failed and want to begin the next cycle or streak from a specific day. This applies for everyone in the pact.</p>
+    <div class="section-title">Pact settings</div>
+    <p class="dim" style="font-size:13px; margin:10px 0 0;">Move the start date — useful if you both failed and want to begin the next cycle or streak from a specific day. Applies for everyone in the pact.</p>
     <div id="startdate-picker" class="date-select-row" style="margin-top:14px;"></div>
+    <div id="settings-cycle-fields" class="hidden">
+      <label>Clean days before the off day</label>
+      <input id="settings-cycledays" type="number" min="1" step="1">
+      <label>Payout per completed cycle</label>
+      <input id="settings-cyclerate" type="number" step="0.5">
+    </div>
     <button class="btn" style="margin-top:14px;" onclick="saveStartDate()">Save</button>
     <button class="btn-ghost" onclick="closeStartDateModal()">Cancel</button>
   </div>
@@ -1177,6 +1183,14 @@ async function openStartDateModal(){
   const data = await dbGet(SESSION.code);
   if(!data) return;
   renderDatePicker(document.getElementById("startdate-picker"), data.startDate);
+  const cycleFields = document.getElementById("settings-cycle-fields");
+  if(data.mode === "cycle"){
+    cycleFields.classList.remove("hidden");
+    document.getElementById("settings-cycledays").value = data.cleanDays || 5;
+    document.getElementById("settings-cyclerate").value = data.cycleRate || 5;
+  } else {
+    cycleFields.classList.add("hidden");
+  }
   document.getElementById("startdate-modal").classList.remove("hidden");
 }
 function closeStartDateModal(){
@@ -1189,6 +1203,12 @@ async function saveStartDate(){
   data.startHistory = data.startHistory || [data.startDate];
   if(!data.startHistory.includes(newDate)) data.startHistory.push(newDate);
   data.startDate = newDate;
+  if(data.mode === "cycle"){
+    const newCleanDays = parseInt(document.getElementById("settings-cycledays").value, 10);
+    const newRate = parseFloat(document.getElementById("settings-cyclerate").value);
+    if(newCleanDays > 0) data.cleanDays = newCleanDays;
+    if(!isNaN(newRate)) data.cycleRate = newRate;
+  }
   await dbSet(SESSION.code, data);
   closeStartDateModal();
   render();
