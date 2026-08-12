@@ -820,19 +820,19 @@ function computeCycleLedger(data){
       if(((data.logs[A]||{})[dateStr]) === "fail") failsA++;
       if(((data.logs[B]||{})[dateStr]) === "fail") failsB++;
     }
-    const extraA = Math.max(0, failsA - 1);
-    const extraB = Math.max(0, failsB - 1);
-    if(failsA > 0 && failsB === 0){
-      const amount = rate + extraA * EXTRA_FAIL_RATE;
-      const extraNote = extraA > 0 ? ` +${extraA} extra relapse${extraA===1?"":"s"}` : "";
-      lines.push({ text: `${B} owes ${A}`, amount, date: `cycle ${c+1}${extraNote}` });
-      actual[A] += amount; actual[B] -= amount;
-    }
-    if(failsB > 0 && failsA === 0){
-      const amount = rate + extraB * EXTRA_FAIL_RATE;
-      const extraNote = extraB > 0 ? ` +${extraB} extra relapse${extraB===1?"":"s"}` : "";
-      lines.push({ text: `${A} owes ${B}`, amount, date: `cycle ${c+1}${extraNote}` });
-      actual[B] += amount; actual[A] -= amount;
+    const diff = failsA - failsB;
+    if(diff !== 0){
+      const magnitude = Math.abs(diff);
+      const amount = rate + (magnitude - 1) * EXTRA_FAIL_RATE;
+      const failNote = `cycle ${c+1} (${A}: ${failsA} fail${failsA===1?"":"s"}, ${B}: ${failsB} fail${failsB===1?"":"s"})`;
+      if(diff > 0){
+        // A has more fails than B, so A owes B
+        lines.push({ text: `${A} owes ${B}`, amount, date: failNote });
+        actual[B] += amount; actual[A] -= amount;
+      } else {
+        lines.push({ text: `${B} owes ${A}`, amount, date: failNote });
+        actual[A] += amount; actual[B] -= amount;
+      }
     }
   }
 
@@ -850,16 +850,18 @@ function computeCycleLedger(data){
     if(((data.logs[A]||{})[dateStr]) === "fail") curFailsA++;
     if(((data.logs[B]||{})[dateStr]) === "fail") curFailsB++;
   }
-  if(curFailsA > 0 && curFailsB > 0){
-    note += ` You've both slipped this cycle — that neutralises it unless one of you turns it around before day ${cycleLen}.`;
-  } else if(curFailsA > 0){
-    const amount = rate + Math.max(0, curFailsA-1) * EXTRA_FAIL_RATE;
-    potential[B] = amount;
-    note += ` ${A} has slipped this cycle — if ${B} stays clean through day ${cycleLen}, ${A} will owe ${B} £${amount.toFixed(2)}.`;
-  } else if(curFailsB > 0){
-    const amount = rate + Math.max(0, curFailsB-1) * EXTRA_FAIL_RATE;
-    potential[A] = amount;
-    note += ` ${B} has slipped this cycle — if ${A} stays clean through day ${cycleLen}, ${B} will owe ${A} £${amount.toFixed(2)}.`;
+  if(curFailsA === curFailsB && curFailsA > 0){
+    note += ` You're tied at ${curFailsA} slip${curFailsA===1?"":"s"} each this cycle — currently neutral, but the next slip by either of you would flip it.`;
+  } else if(curFailsA !== curFailsB){
+    const magnitude = Math.abs(curFailsA - curFailsB);
+    const amount = rate + (magnitude - 1) * EXTRA_FAIL_RATE;
+    if(curFailsA > curFailsB){
+      potential[B] = amount;
+      note += ` ${A} is ahead on slips this cycle (${curFailsA} to ${curFailsB}) — if that holds through day ${cycleLen}, ${A} will owe ${B} £${amount.toFixed(2)}.`;
+    } else {
+      potential[A] = amount;
+      note += ` ${B} is ahead on slips this cycle (${curFailsB} to ${curFailsA}) — if that holds through day ${cycleLen}, ${B} will owe ${A} £${amount.toFixed(2)}.`;
+    }
   }
 
   return { lines, note, actual, potential };
