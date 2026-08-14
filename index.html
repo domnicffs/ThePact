@@ -377,8 +377,9 @@
 <div id="day-modal" class="hidden modal-backdrop" onclick="if(event.target===this) closeDayModal()">
   <div class="modal-card">
     <div class="section-title" id="modal-date-label">—</div>
-    <button class="btn btn-pass" onclick="modalLog('pass')">Stayed clean</button>
-    <button class="btn-fail" onclick="modalLog('fail')">I broke it</button>
+    <p id="modal-offday-note" class="dim hidden" style="font-size:13px; margin:10px 0 0;">This is the off day — nothing to check in here.</p>
+    <button class="btn btn-pass" id="modal-pass-btn" onclick="modalLog('pass')">Stayed clean</button>
+    <button class="btn-fail" id="modal-fail-btn" onclick="modalLog('fail')">I broke it</button>
     <button class="btn-freeze hidden" id="modal-freeze-btn" onclick="modalLog('freeze')">❄ Use a freeze</button>
     <button class="btn-ghost hidden" id="modal-clear-btn" onclick="modalClear()">Clear this day</button>
     <button class="btn-ghost" onclick="closeDayModal()">Cancel</button>
@@ -951,7 +952,7 @@ function renderCalendars(data){
       if(isOffDay) classes += " offday";
       const isCycleStart = dateStr === data.startDate;
       if(isCycleStart) classes += " cyclestart";
-      if(isSelf && withinRange) classes += " clickable";
+      if(isSelf && withinRange && !isOffDay) classes += " clickable";
       cell.className = classes;
       cell.textContent = d;
 
@@ -967,7 +968,7 @@ function renderCalendars(data){
         mark.textContent = "\u25B6";
         cell.appendChild(mark);
       }
-      if(isSelf && withinRange){
+      if(isSelf && withinRange && !isOffDay){
         cell.addEventListener("click", ()=> openDayModal(dateStr, data));
       }
       grid.appendChild(cell);
@@ -1188,8 +1189,18 @@ function openDayModal(dateStr, data){
     ? "Today"
     : new Date(dateStr).toLocaleDateString(undefined, {weekday:"short", month:"short", day:"numeric"});
   document.getElementById("modal-date-label").textContent = label;
-  document.getElementById("modal-freeze-btn").classList.toggle("hidden", modeCycle || balance<=0);
-  document.getElementById("modal-clear-btn").classList.toggle("hidden", !current);
+
+  let isOffDay = false;
+  if(modeCycle && dateStr >= data.startDate){
+    const cycleLen = (data.cleanDays || 5) + 1;
+    isOffDay = (daysBetween(data.startDate, dateStr) % cycleLen === cycleLen - 1);
+  }
+
+  document.getElementById("modal-offday-note").classList.toggle("hidden", !isOffDay);
+  document.getElementById("modal-pass-btn").classList.toggle("hidden", isOffDay);
+  document.getElementById("modal-fail-btn").classList.toggle("hidden", isOffDay);
+  document.getElementById("modal-freeze-btn").classList.toggle("hidden", isOffDay || modeCycle || balance<=0);
+  document.getElementById("modal-clear-btn").classList.toggle("hidden", isOffDay || !current);
   document.getElementById("day-modal").classList.remove("hidden");
 }
 function closeDayModal(){
