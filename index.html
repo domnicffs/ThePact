@@ -519,6 +519,7 @@ async function dbGet(code){
   data.freezeCredited = data.freezeCredited || {};
   data.startHistory = (data.startHistory && data.startHistory.length) ? data.startHistory : [data.startDate];
   data.cleanDays = data.cleanDays || 5;
+  data.creator = data.creator || Object.keys(data.participants)[0];
   Object.keys(data.participants).forEach(n=>{
     if(!data.logs[n]) data.logs[n] = {};
     if(data.freezes[n] === undefined) data.freezes[n] = 0;
@@ -625,6 +626,7 @@ async function createPact(){
     title, code,
     category: document.getElementById("c-category").value,
     mode,
+    creator: name,
     cycleRate: parseFloat(document.getElementById("c-cyclerate").value) || 5,
     cleanDays: parseInt(document.getElementById("c-cycledays").value, 10) || 5,
     startDate: readDatePicker(document.getElementById("c-start-picker")),
@@ -908,10 +910,15 @@ function renderCalendars(data){
       ? `<span class="freeze-chip">❄ ${creditFreezes(data, name)}</span>`
       : "";
     const isSelfRow = name === SESSION.name;
-    const editIcon = isSelfRow
-      ? `<button class="name-edit-btn" onclick="openRenameModal()" title="Rename yourself">✎</button>`
+    const isCreator = SESSION.name === data.creator;
+    const canEdit = isSelfRow || isCreator;
+    const editIcon = canEdit
+      ? `<button class="name-edit-btn" onclick="openRenameModal('${name.replace(/'/g,"\\'")}')" title="Rename">✎</button>`
       : "";
-    label.innerHTML = `<span>${name}${editIcon}</span><span style="display:flex; gap:8px; align-items:center;">${freezeBadge}<span class="dim mono">${streak} day streak</span></span>`;
+    const removeIcon = (isCreator && !isSelfRow)
+      ? `<button class="name-edit-btn" onclick="removeParticipant('${name.replace(/'/g,"\\'")}')" title="Remove from pact" style="color:var(--rust);">✕</button>`
+      : "";
+    label.innerHTML = `<span>${name}${editIcon}${removeIcon}</span><span style="display:flex; gap:8px; align-items:center;">${freezeBadge}<span class="dim mono">${streak} day streak</span></span>`;
     row.appendChild(label);
 
     const grid = document.createElement("div");
@@ -1094,6 +1101,11 @@ function renderQuote(){
 async function render(){
   const data = await dbGet(SESSION.code);
   if(!data) return;
+  if(!data.participants[SESSION.name]){
+    alert("You've been removed from this pact.");
+    clearSession(true);
+    return;
+  }
   lastData = data;
   // credit any freezes earned since last check, and persist
   let changed = false;
@@ -1216,19 +1228,24 @@ async function saveStartDate(){
   render();
 }
 
-function openRenameModal(){
-  document.getElementById("rename-input").value = SESSION.name;
+let renameTarget = null;
+function openRenameModal(targetName){
+  renameTarget = targetName || SESSION.name;
+  document.getElementById("rename-input").value = renameTarget;
   document.getElementById("rename-modal").classList.remove("hidden");
 }
 function closeRenameModal(){
   document.getElementById("rename-modal").classList.add("hidden");
+  renameTarget = null;
 }
 async function saveRename(){
   const newName = document.getElementById("rename-input").value.trim();
-  const oldName = SESSION.name;
+  const oldName = renameTarget || SESSION.name;
+  const renamingSelf = oldName === SESSION.name;
   if(!newName){ alert("Enter a name."); return; }
   if(newName === oldName){ closeRenameModal(); return; }
   const data = await dbGet(SESSION.code);
+  if(!data.participants[oldName]){ alert("That person isn't in this pact anymore."); closeRenameModal(); return; }
   if(data.participants[newName]){ alert("Someone in this pact already uses that name."); return; }
   data.participants[newName] = data.participants[oldName];
   delete data.participants[oldName];
@@ -1238,11 +1255,27 @@ async function saveRename(){
   delete data.freezes[oldName];
   data.freezeCredited[newName] = data.freezeCredited[oldName] || 0;
   delete data.freezeCredited[oldName];
+  if(data.creator === oldName) data.creator = newName;
   await dbSet(SESSION.code, data);
-  SESSION.name = newName;
-  localStorage.setItem(SESSION_KEY, JSON.stringify(SESSION));
-  localStorage.setItem(LAST_SESSION_KEY, JSON.stringify(SESSION));
+  if(renamingSelf){
+    SESSION.name = newName;
+    localStorage.setItem(SESSION_KEY, JSON.stringify(SESSION));
+    localStorage.setItem(LAST_SESSION_KEY, JSON.stringify(SESSION));
+  }
   closeRenameModal();
+  render();
+}
+
+async function removeParticipant(targetName){
+  if(targetName === SESSION.name) return; // use Leave for yourself
+  if(!confirm(`Remove ${targetName} from this pact? Their history stays with the pact, but they'll be signed out next time they open it.`)) return;
+  const data = await dbGet(SESSION.code);
+  if(!data.participants[targetName]) return;
+  delete data.participants[targetName];
+  delete data.logs[targetName];
+  delete data.freezes[targetName];
+  delete data.freezeCredited[targetName];
+  await dbSet(SESSION.code, data);
   render();
 }
 
