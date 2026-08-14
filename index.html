@@ -348,6 +348,10 @@
         <div class="dim" style="font-size:13px" id="today-done-text">—</div>
         <button class="btn-ghost" style="width:auto; padding:6px 14px; font-size:12px; margin-top:12px;" onclick="undoCheckIn()">Undo today's tick</button>
       </div>
+      <div id="today-offday" class="checked-in hidden">
+        <div class="stamp freeze" style="border-color:var(--ice); color:var(--ice); background:var(--ice-soft);">☾</div>
+        <div class="dim" style="font-size:13px">Today's the off day — nothing to check in. Rest up, next cycle starts tomorrow.</div>
+      </div>
     </div>
 
     <div class="section-title" style="display:flex; align-items:center; justify-content:space-between;">
@@ -1066,6 +1070,16 @@ function renderToday(data){
   }
   document.getElementById("hourglass-wrap").classList.toggle("hidden", data.mode !== "cycle");
   tickLiveTimer();
+
+  const isRestDay = data.mode === "cycle" && totalDays >= 0 && (totalDays % cycleLen === cycleLen - 1);
+
+  if(isRestDay){
+    document.getElementById("today-input").classList.add("hidden");
+    document.getElementById("today-done").classList.add("hidden");
+    document.getElementById("today-offday").classList.remove("hidden");
+    return;
+  }
+  document.getElementById("today-offday").classList.add("hidden");
 
   if(myLog){
     document.getElementById("today-input").classList.add("hidden");
